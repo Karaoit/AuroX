@@ -1,0 +1,482 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="color-scheme" content="dark">
+    <title>AuroX Operator Console</title>
+    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/layer.css">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+</head>
+<body>
+    <canvas id="bgCanvas" class="layer-canvas layer-background"></canvas>
+    <div class="ambient-grid" aria-hidden="true"></div>
+    <div class="ambient-orb orb-a" aria-hidden="true"></div>
+    <div class="ambient-orb orb-b" aria-hidden="true"></div>
+
+    <main class="app-shell">
+        <header class="topbar interactive-layer" data-layer="300" data-command="LAYER.ACTION" data-source="topbar">
+            <div class="brand-block">
+                <div class="brand-mark">
+                    <span>AX</span>
+                    <i></i>
+                </div>
+                <div>
+                    <div class="brand-title">AuroX Operator Console</div>
+                    <div class="brand-subtitle">Operator runtime · pipeline debug · command routing</div>
+                </div>
+            </div>
+
+            <div class="topbar-center">
+                <div class="runtime-pill">  
+                    <span class="runtime-label">Runtime</span>
+                    <strong id="headerEngineState">UNKNOWN</strong>
+                </div>
+                <div class="runtime-pill">
+                    <span class="runtime-label">Tasks</span>
+                    <strong id="headerTaskCount">0</strong>
+                </div>
+            </div>
+
+            <div class="top-status">
+                <span id="connectionDot" class="status-dot"></span>
+                <span id="connectionText">Connecting...</span>
+                <button class="ghost-btn command-element" data-command="SYS.PING" data-source="topbar.ping">Ping</button>
+            </div>
+        </header>
+
+        <section class="workspace">
+            <aside class="sidebar interactive-layer" data-layer="220" data-command="LAYER.ACTION" data-source="sidebar">
+                <div class="section-label">Workspace</div>
+
+                <button class="nav-item active command-element"
+                        data-command="VIEW.OVERVIEW"
+                        data-view="overview"
+                        data-source="nav.overview">
+                    <span class="nav-index">01</span>
+                    <span class="nav-copy"><strong>Overview</strong><small>系统与算子总览</small></span>
+                </button>
+
+                <button class="nav-item command-element"
+                        data-command="VIEW.TASKS"
+                        data-view="tasks"
+                        data-source="nav.tasks">
+                    <span class="nav-index">02</span>
+                    <span class="nav-copy"><strong>Tasks</strong><small>任务与 Pipeline</small></span>
+                </button>
+
+                <button class="nav-item command-element"
+                        data-command="VIEW.LOGS"
+                        data-view="logs"
+                        data-source="nav.logs">
+                    <span class="nav-index">03</span>
+                    <span class="nav-copy"><strong>Logs</strong><small>事件与命令记录</small></span>
+                </button>
+
+                <button class="nav-item command-element"
+                        data-command="VIEW.SETTINGS"
+                        data-view="settings"
+                        data-source="nav.settings">
+                    <span class="nav-index">04</span>
+                    <span class="nav-copy"><strong>Settings</strong><small>运行时配置</small></span>
+                </button>
+
+                <div class="sidebar-spacer"></div>
+
+                <div class="section-label">Engine</div>
+                <div class="engine-card">
+                    <div class="engine-state-row">
+                        <span class="status-dot" id="engineMiniDot"></span>
+                        <div>
+                            <strong id="engineMiniText">Unknown</strong>
+                            <small>Execution Runtime</small>
+                        </div>
+                    </div>
+                    <div class="engine-actions">
+                        <button class="action-btn primary compact command-element"
+                                data-command="ENGINE.START"
+                                data-source="engine.start">Start</button>
+                        <button class="action-btn compact command-element"
+                                data-command="ENGINE.STOP"
+                                data-source="engine.stop">Stop</button>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="content-area interactive-layer"
+                     data-layer="100"
+                     data-command="LAYER.ACTION"
+                     data-source="content-area">
+
+                <!-- ================= OVERVIEW ================= -->
+                <section class="view-page active" data-page="overview">
+                    <div class="hero-panel panel interactive-layer"
+                         data-layer="180"
+                         data-command="LAYER.ACTION"
+                         data-source="hero-panel">
+                        <div class="hero-copy">
+                            <div class="eyebrow">AUROX / OPERATOR RUNTIME</div>
+                            <h1>Build, inspect and dispatch operators from one console.</h1>
+                            <p>
+                                面向图像、几何、控制与优化算子的统一调试入口。
+                                当前前端继续使用 command code + payload 与 C++ CommandRouter 通信，
+                                后续可直接扩展成算子注册、Pipeline 编排与运行状态观测平台。
+                            </p>
+                            <div class="hero-tags">
+                                <span>C++ Runtime</span>
+                                <span>REST Command Bus</span>
+                                <span>Operator Registry</span>
+                                <span>Pipeline Ready</span>
+                            </div>
+                        </div>
+
+                        <div class="hero-actions">
+                            <button class="action-btn primary command-element"
+                                    data-command="TASK.CREATE"
+                                    data-source="hero.quick-task"
+                                    data-payload='{"type":"diagnostic","parameters":{"mode":"quick"}}'>
+                                Run Diagnostic
+                            </button>
+                            <button id="refreshStatusBtn"
+                                    class="action-btn command-element"
+                                    data-command="SYS.STATUS"
+                                    data-source="hero.status">
+                                Refresh Status
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="metrics-grid">
+                        <article class="metric-card panel">
+                            <div class="metric-top"><span class="metric-label">Engine</span><span class="metric-icon">RT</span></div>
+                            <strong id="metricEngine">UNKNOWN</strong>
+                            <small>Execution runtime state</small>
+                        </article>
+
+                        <article class="metric-card panel">
+                            <div class="metric-top"><span class="metric-label">Task Sequence</span><span class="metric-icon">#</span></div>
+                            <strong id="metricTaskSequence">0</strong>
+                            <small>Tasks accepted by backend</small>
+                        </article>
+
+                        <article class="metric-card panel">
+                            <div class="metric-top"><span class="metric-label">UI Layer Hits</span><span class="metric-icon">↕</span></div>
+                            <strong id="metricLayerCount">0</strong>
+                            <small>Multi-layer command capture</small>
+                        </article>
+
+                        <article class="metric-card panel">
+                            <div class="metric-top"><span class="metric-label">Registered Operators</span><span class="metric-icon">OP</span></div>
+                            <strong id="metricOperatorCount">8</strong>
+                            <small>Frontend catalog preview</small>
+                        </article>
+                    </div>
+
+                    <div class="overview-grid">
+                        <section class="panel operator-panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <div class="eyebrow">OPERATOR CATALOG</div>
+                                    <h2>Operators</h2>
+                                </div>
+                                <div class="toolbar-inline">
+                                    <input id="operatorSearch" class="mini-input" placeholder="Search operator..." spellcheck="false">
+                                    <button id="clearOperatorSearch" class="ghost-btn">Reset</button>
+                                </div>
+                            </div>
+
+                            <div class="operator-filter-row" id="operatorFilters">
+                                <button class="filter-chip active" data-filter="all">All</button>
+                                <button class="filter-chip" data-filter="image">Image</button>
+                                <button class="filter-chip" data-filter="geometry">Geometry</button>
+                                <button class="filter-chip" data-filter="control">Control</button>
+                                <button class="filter-chip" data-filter="optimization">Optimization</button>
+                            </div>
+
+                            <div class="operator-list" id="operatorList">
+                                <button class="operator-item active" data-category="image" data-name="GaussianBlur" data-signature="Image → Image" data-description="Gaussian smoothing operator for denoising and preprocessing." data-params='{"kernelSize":5,"sigma":1.2}'>
+                                    <span class="operator-glyph">GB</span>
+                                    <span class="operator-main"><strong>GaussianBlur</strong><small>Image · Filter</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="image" data-name="CannyEdge" data-signature="Image → EdgeMap" data-description="Edge extraction operator using two threshold parameters." data-params='{"thresholdLow":80,"thresholdHigh":160}'>
+                                    <span class="operator-glyph">CE</span>
+                                    <span class="operator-main"><strong>CannyEdge</strong><small>Image · Feature</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="image" data-name="Threshold" data-signature="Image → BinaryImage" data-description="Binary threshold operator for segmentation and mask generation." data-params='{"threshold":128,"maxValue":255}'>
+                                    <span class="operator-glyph">TH</span>
+                                    <span class="operator-main"><strong>Threshold</strong><small>Image · Segmentation</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="geometry" data-name="FindContours" data-signature="BinaryImage → Contours" data-description="Extract contour collections from a binary image." data-params='{"mode":"external","approximation":"simple"}'>
+                                    <span class="operator-glyph">FC</span>
+                                    <span class="operator-main"><strong>FindContours</strong><small>Geometry · Contour</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="geometry" data-name="GridInference" data-signature="Points → Grid" data-description="Infer structured grid topology from candidate points." data-params='{"neighborCount":4,"tolerance":0.15}'>
+                                    <span class="operator-glyph">GI</span>
+                                    <span class="operator-main"><strong>GridInference</strong><small>Geometry · Topology</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="control" data-name="PIDStep" data-signature="State × Params → Control" data-description="Single control step using PID parameters." data-params='{"kp":1.0,"ki":0.1,"kd":0.01}'>
+                                    <span class="operator-glyph">PD</span>
+                                    <span class="operator-main"><strong>PIDStep</strong><small>Control · Runtime</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="optimization" data-name="ParameterSearch" data-signature="Space × Loss → Suggestion" data-description="Search parameter candidates inside a bounded parameter space." data-params='{"budget":20,"strategy":"bayesian"}'>
+                                    <span class="operator-glyph">PS</span>
+                                    <span class="operator-main"><strong>ParameterSearch</strong><small>Optimization · Search</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                                <button class="operator-item" data-category="optimization" data-name="LossAggregate" data-signature="Metrics → Loss" data-description="Aggregate multiple objective metrics into a scalar loss." data-params='{"weights":[0.5,0.3,0.2],"normalize":true}'>
+                                    <span class="operator-glyph">LA</span>
+                                    <span class="operator-main"><strong>LossAggregate</strong><small>Optimization · Loss</small></span>
+                                    <span class="operator-arrow">→</span>
+                                </button>
+                            </div>
+                        </section>
+
+                        <section class="panel inspector-panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <div class="eyebrow">INSPECTOR</div>
+                                    <h2 id="inspectorName">GaussianBlur</h2>
+                                </div>
+                                <span class="chip" id="inspectorCategory">IMAGE</span>
+                            </div>
+
+                            <div class="signature-box">
+                                <span>Signature</span>
+                                <code id="inspectorSignature">Image → Image</code>
+                            </div>
+                            <p class="inspector-description" id="inspectorDescription">
+                                Gaussian smoothing operator for denoising and preprocessing.
+                            </p>
+
+                            <label>
+                                Parameters
+                                <textarea id="inspectorParams" class="code-area" spellcheck="false">{
+  "kernelSize": 5,
+  "sigma": 1.2
+}</textarea>
+                            </label>
+
+                            <div class="inspector-actions">
+                                <button id="loadOperatorToComposer" class="action-btn primary">Load to Composer</button>
+                                <button id="copyOperatorConfig" class="action-btn">Copy JSON</button>
+                            </div>
+                        </section>
+                    </div>
+
+                    <section class="panel pipeline-preview">
+                        <div class="panel-heading">
+                            <div>
+                                <div class="eyebrow">PIPELINE PREVIEW</div>
+                                <h2>Visual Processing Chain</h2>
+                            </div>
+                            <span class="chip">Prototype</span>
+                        </div>
+
+                        <div class="pipeline-flow">
+                            <div class="pipeline-node">
+                                <span class="node-kicker">INPUT</span>
+                                <strong>Image</strong>
+                                <small>Observation.raw_input</small>
+                            </div>
+                            <div class="pipeline-link"><span></span></div>
+                            <div class="pipeline-node active">
+                                <span class="node-kicker">OPERATOR</span>
+                                <strong>GaussianBlur</strong>
+                                <small>kernel=5 · σ=1.2</small>
+                            </div>
+                            <div class="pipeline-link"><span></span></div>
+                            <div class="pipeline-node">
+                                <span class="node-kicker">OPERATOR</span>
+                                <strong>CannyEdge</strong>
+                                <small>80 → 160</small>
+                            </div>
+                            <div class="pipeline-link"><span></span></div>
+                            <div class="pipeline-node">
+                                <span class="node-kicker">OUTPUT</span>
+                                <strong>EdgeMap</strong>
+                                <small>Task result</small>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+
+                <!-- ================= TASKS ================= -->
+                <section class="view-page" data-page="tasks">
+                    <div class="page-heading">
+                        <div>
+                            <div class="eyebrow">EXECUTION / TASKS</div>
+                            <h1>Task & Pipeline Runtime</h1>
+                            <p>构造任务 payload、调度后端命令，并在同一页面观察任务状态。</p>
+                        </div>
+                        <button class="action-btn primary command-element"
+                                data-command="TASK.CREATE"
+                                data-source="tasks.quick"
+                                data-payload='{"type":"operator-pipeline","parameters":{"preset":"vision-basic"}}'>
+                            Create Pipeline Task
+                        </button>
+                    </div>
+
+                    <div class="task-layout">
+                        <section class="panel command-composer">
+                            <div class="panel-heading">
+                                <div>
+                                    <div class="eyebrow">MANUAL DISPATCH</div>
+                                    <h2>Command Composer</h2>
+                                </div>
+                                <span class="chip">POST /api/command</span>
+                            </div>
+
+                            <label>
+                                Command Code
+                                <input id="commandCodeInput" value="TASK.CREATE" spellcheck="false">
+                            </label>
+
+                            <label>
+                                Payload JSON
+                                <textarea id="payloadInput" class="code-area composer-area" spellcheck="false">{
+  "type": "operator-pipeline",
+  "parameters": {
+    "operator": "GaussianBlur",
+    "config": {
+      "kernelSize": 5,
+      "sigma": 1.2
+    }
+  }
+}</textarea>
+                            </label>
+
+                            <div class="composer-actions">
+                                <button id="formatPayloadBtn" class="action-btn">Format JSON</button>
+                                <button id="sendManualBtn" class="action-btn primary">Send Command</button>
+                            </div>
+                        </section>
+
+                        <section class="panel task-monitor">
+                            <div class="panel-heading">
+                                <div>
+                                    <div class="eyebrow">TASK MONITOR</div>
+                                    <h2>Runtime Snapshot</h2>
+                                </div>
+                                <button class="ghost-btn command-element"
+                                        data-command="SYS.STATUS"
+                                        data-source="tasks.status">Refresh</button>
+                            </div>
+
+                            <div class="status-table">
+                                <div><span>Engine</span><strong id="taskViewEngine">UNKNOWN</strong></div>
+                                <div><span>Latest Task ID</span><strong id="taskViewLatestId">0</strong></div>
+                                <div><span>Backend</span><strong id="taskViewBackend">Checking</strong></div>
+                                <div><span>Dispatch Mode</span><strong>Command Bus</strong></div>
+                            </div>
+
+                            <div class="task-callout">
+                                <span class="callout-mark">i</span>
+                                <div>
+                                    <strong>Current backend scope</strong>
+                                    <p>目前 TASK.CREATE 返回 taskId/type/parameters；后续增加 TASK.LIST / TASK.GET / TASK.CANCEL 后，这里可直接升级为真实任务队列。</p>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <!-- ================= LOGS ================= -->
+                <section class="view-page" data-page="logs">
+                    <div class="page-heading">
+                        <div>
+                            <div class="eyebrow">OBSERVABILITY</div>
+                            <h1>Command & Event Stream</h1>
+                            <p>集中查看 UI → Backend 的请求、返回结果与错误。</p>
+                        </div>
+                        <div class="page-actions">
+                            <button id="exportLogBtn" class="action-btn">Export Text</button>
+                            <button id="clearLogBtn" class="action-btn">Clear</button>
+                        </div>
+                    </div>
+
+                    <section class="panel log-panel log-panel-full">
+                        <div class="log-toolbar">
+                            <div class="log-filter">
+                                <button class="filter-chip active" data-log-filter="all">All</button>
+                                <button class="filter-chip" data-log-filter="send">Send</button>
+                                <button class="filter-chip" data-log-filter="recv">Receive</button>
+                                <button class="filter-chip" data-log-filter="error">Error</button>
+                            </div>
+                            <span id="logCount" class="chip">0 events</span>
+                        </div>
+                        <div id="eventLog" class="event-log" aria-live="polite"></div>
+                    </section>
+                </section>
+
+                <!-- ================= SETTINGS ================= -->
+                <section class="view-page" data-page="settings">
+                    <div class="page-heading">
+                        <div>
+                            <div class="eyebrow">PREFERENCES</div>
+                            <h1>Runtime Settings</h1>
+                            <p>这些设置当前保存在浏览器本地，不依赖后端。</p>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid">
+                        <section class="panel settings-card">
+                            <div class="panel-heading">
+                                <div><div class="eyebrow">INTERFACE</div><h2>Display</h2></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><strong>Pointer follower</strong><small>显示自定义跟随光标</small></div>
+                                <label class="switch"><input id="pointerToggle" type="checkbox" checked><span></span></label>
+                            </div>
+                            <div class="setting-row">
+                                <div><strong>Background motion</strong><small>鼠标驱动背景光场</small></div>
+                                <label class="switch"><input id="backgroundToggle" type="checkbox" checked><span></span></label>
+                            </div>
+                            <div class="setting-row">
+                                <div><strong>Compact density</strong><small>降低面板间距，提高信息密度</small></div>
+                                <label class="switch"><input id="compactToggle" type="checkbox"><span></span></label>
+                            </div>
+                        </section>
+
+                        <section class="panel settings-card">
+                            <div class="panel-heading">
+                                <div><div class="eyebrow">COMMAND BUS</div><h2>Behavior</h2></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><strong>Auto refresh</strong><small>定期获取 SYS.STATUS</small></div>
+                                <label class="switch"><input id="autoRefreshToggle" type="checkbox" checked><span></span></label>
+                            </div>
+                            <label>
+                                Refresh interval (seconds)
+                                <input id="refreshIntervalInput" type="number" min="2" max="60" value="8">
+                            </label>
+                            <div class="setting-actions">
+                                <button id="saveSettingsBtn" class="action-btn primary">Save Settings</button>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+            </section>
+        </section>
+
+        <footer class="footer-bar">
+            <span><b>AuroX</b> · Operator Console Prototype</span>
+            <span id="footerRoute">VIEW / OVERVIEW</span>
+            <span id="pointerReadout">x: 0 / y: 0</span>
+        </footer>
+    </main>
+
+    <canvas id="mouseCanvas" class="layer-canvas layer-mouse"></canvas>
+    <script src="/js/main.js"></script>
+</body>
+</html>

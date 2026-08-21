@@ -1,0 +1,34 @@
+{
+    "configurations":
+    [
+        {
+
+            "name":
+            "Win64",
+
+
+            "compilerPath":
+            "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.xx/bin/Hostx64/x64/cl.exe",
+
+
+            "cppStandard":
+            "c++20",
+
+
+            "intelliSenseMode":
+            "windows-msvc-x64",
+
+
+            "includePath":
+            [
+                "${workspaceFolder}/../Library/cpp-httplib",
+                "${workspaceFolder}/../Library/nlohmann/json",
+                "${workspaceFolder}/include"
+            ]
+
+        }
+    ],
+
+
+    "version":4
+}

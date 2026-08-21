@@ -1,0 +1,26 @@
+/* =========================
+   AuroX layer system
+   ========================= */
+
+.layer-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+}
+
+.layer-background { z-index: 1; }
+
+.ambient-grid,
+.ambient-orb { pointer-events: none; }
+
+.ambient-grid { z-index: 10; }
+.ambient-orb { z-index: 11; }
+
+/* Pointer rendering stays visually on top while never consuming clicks. */
+.layer-mouse { z-index: 9999; }
+
+/* Multi-hit command nodes participate in the custom elementsFromPoint dispatcher. */
+.interactive-layer,
+.command-element { position: relative; }
