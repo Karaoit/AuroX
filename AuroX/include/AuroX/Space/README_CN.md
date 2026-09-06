@@ -173,10 +173,21 @@ int main() {
 }
 ```
 
-## 文件位置
+## 文件位置与代码组织
+
+`ParameterSpace` 采用"声明 / 实现分离"的三文件组织：
+
+| 文件 | 内容 | 说明 |
+|---|---|---|
+| `include/AuroX/Space/ParameterSpace.hpp` | **仅声明** | 所有类的成员函数只有声明，不含函数体（`AUROX_STRUCTURED_PARAMS` 宏除外——它在用户派生类内部展开生成代码，必须留在头文件） |
+| `include/AuroX/Space/ParameterSpace.ipp` | **模板实现** | `NumericTraits` 特化、`TypedParameter<T>`、`ParameterSpace::getAs/vectorize/unvectorize`、`Param<T>`、`StructuredSpace<Derived>` 的实现。模板代码必须对每个编译单元可见，无法放进 cpp，故拆到此文件；由 hpp 末尾自动 `#include`，**不要直接包含** |
+| `src/Space/ParameterSpace.cpp` | **非模板实现** | `ParameterBase` 默认虚函数、`EnumParameter`、`ParameterSpace`、`EnumParam` 的全部实现，随 DLL 编译 |
+
+新增非模板实现一律写入 `ParameterSpace.cpp`；新增模板实现写入 `ParameterSpace.ipp`。
 
 - 声明（头文件）：`include/AuroX/Space/ParameterSpace.hpp`
-- 实现（源文件）：`src/Space/ParameterSpace.cpp`
+- 模板实现（随头文件分发）：`include/AuroX/Space/ParameterSpace.ipp`
+- 非模板实现（源文件）：`src/Space/ParameterSpace.cpp`
 
 ---
 
