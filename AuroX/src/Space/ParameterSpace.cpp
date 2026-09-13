@@ -161,6 +161,15 @@ void ParameterSpace::fromJson(const json& j) {
     }
 }
 
+bool ParameterSpace::tryFromJson(const json& j) noexcept {
+    try {
+        fromJson(j);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 // ============================================================================
 // Vectorization
 // ============================================================================
@@ -185,7 +194,7 @@ std::vector<ParameterSpace::ComponentMeta> ParameterSpace::componentLayout() con
     std::vector<ParameterSpace::ComponentMeta> out;
     for (const auto& p : items_) {
         const std::size_t c = p->componentCount();
-        if (c > 0) out.push_back({p->name(), p->typeId(), c});
+        if (c > 0) out.push_back({p->name(), p->typeId(), c, p->typeId() == ParameterTypeId::Enum});
     }
     return out;
 }

@@ -12,45 +12,43 @@
 //      - JSON serialization;
 //      - optimizer vectorization.
 //
-//   2. StructuredSpace<Derived>
+//   2. PStruct<Derived>  (short for Parameter Struct; was StructuredSpace)
 //      - strongly typed user-defined parameter structs;
 //      - IDE member completion;
-//      - automatic synchronization with ParameterSpace;
+//      - automatic synchronization with PSpace;
 //      - automatic serialization / deserialization;
 //      - automatic vectorization / unvectorization.
 //
 // Example:
 //
 //   struct PIDParameters
-//       : public AuroX::Space::StructuredSpace<PIDParameters>
+//       : public AuroX::Space::PStruct<PIDParameters>
 //   {
 //       AuroX::Space::Param<double> Kp;
 //       AuroX::Space::Param<double> Ki;
 //       AuroX::Space::Param<double> Kd;
 //       AuroX::Space::EnumParam mode;
 //
-//       AUROX_STRUCTURED_PARAMS(Kp, Ki, Kd, mode)
+//       // 1) declare the iteration list (used by sync / serialize / vectorize)
+//       AUROX_PARAMS(Kp, Ki, Kd, mode)
 //
 //       PIDParameters()
 //       {
-//           registerParams([this](auto& space)
-//           {
-//               Kp.bind(space, "Kp", 1.0, 0.0, 10.0);
-//               Ki.bind(space, "Ki", 0.1, 0.0, 5.0);
-//               Kd.bind(space, "Kd", 0.05);
-//               mode.bind(
-//                   space,
-//                   "mode",
-//                   "auto",
-//                   {"auto", "manual", "adaptive"}
-//               );
-//           });
+//           // 2) register into the space. PARAM_BIND auto-derives the
+//           //    registered name ("Kp") from the variable name, so you
+//           //    never write the string literal again.
+//           PARAM_REG(
+//               PARAM_BIND(Kp, 1.0, 0.0, 10.0);
+//               PARAM_BIND(Ki, 0.1, 0.0, 5.0);
+//               PARAM_BIND(Kd, 0.05);
+//               PARAM_BIND(mode, "auto", {"auto", "manual", "adaptive"});
+//           );
 //       }
 //   };
 //
 // File layout (declaration / implementation split):
 //   ParameterSpace.hpp - declarations only (this file)
-//   ParameterSpace.ipp - template implementations, included at the end of
+//   PSpace.ipp - template implementations, included at the end of
 //                        this header; do NOT include it directly
 //   ParameterSpace.cpp - all non-template implementations
 // ============================================================================
@@ -111,6 +109,7 @@ public:
     virtual const char* typeName() const = 0;
     virtual std::unique_ptr<ParameterBase> clone() const = 0;
     virtual bool isWithinBounds() const = 0;
+    bool inBounds() const { return isWithinBounds(); }
     virtual bool isValid() const;
     virtual bool isBounded() const;
     virtual json toJson() const = 0;
@@ -156,7 +155,7 @@ template <> struct ParameterTypeInfo<std::string> {
 // ============================================================================
 // Numeric traits
 // (primary template only; the specializations contain functions and live in
-//  ParameterSpace.ipp)
+//  PSpace.ipp)
 // ============================================================================
 
 template <typename T>
@@ -236,7 +235,7 @@ public:
 };
 
 // ============================================================================
-// ParameterSpace
+// PSpace
 // ============================================================================
 
 class AUROX_API ParameterSpace {
@@ -245,6 +244,7 @@ public:
         std::string name;
         ParameterTypeId type;
         std::size_t components;
+        bool is_enum = false;
     };
 
     // Registration
@@ -293,6 +293,7 @@ public:
     // Serialization
     json toJson() const;
     void fromJson(const json& j);
+    bool tryFromJson(const json& j) noexcept;
 
     // Typed vectorization
     template <typename T>
@@ -304,6 +305,11 @@ public:
     std::vector<double> vectorizeDouble() const;
     void unvectorizeDouble(const std::vector<double>& v);
     std::vector<ComponentMeta> componentLayout() const;
+
+    // Short aliases (zero-break)
+    std::vector<double> vec() const { return vectorizeDouble(); }
+    void unvec(const std::vector<double>& v) { unvectorizeDouble(v); }
+    std::vector<ComponentMeta> layout() const { return componentLayout(); }
 
 private:
     std::vector<std::unique_ptr<ParameterBase>> items_;
@@ -318,7 +324,6 @@ template <typename T>
 class Param {
 public:
     using value_type = T;
-    T value{};
 
     Param() = default;
 
@@ -339,9 +344,12 @@ public:
     const std::string& name() const;
     bool isBound() const;
     bool isValid() const;
+    bool inBounds() const { return isValid(); }
     TypedParameter<T>* raw();
     const TypedParameter<T>* raw() const;
 
+protected:
+    T value{};
 private:
     std::string name_;
     TypedParameter<T>* raw_ = nullptr;
@@ -353,7 +361,6 @@ private:
 
 class EnumParam {
 public:
-    std::string value;
     EnumParam() = default;
 
     void bind(ParameterSpace& space, std::string_view name, const std::string& def, std::vector<std::string> labels);
@@ -371,27 +378,30 @@ public:
     const std::string& name() const;
     bool isBound() const;
     bool isValid() const;
+    bool inBounds() const { return isValid(); }
     EnumParameter* raw();
     const EnumParameter* raw() const;
 
+protected:
+    std::string value;
 private:
     std::string name_;
     EnumParameter* raw_ = nullptr;
 };
 
 // ============================================================================
-// StructuredSpace<Derived>
+// PStruct<Derived>
 // ============================================================================
 
 template <typename Derived>
-class StructuredSpace {
+class PStruct {
 public:
-    StructuredSpace() = default;
-    virtual ~StructuredSpace() = default;
-    StructuredSpace(const StructuredSpace&) = delete;
-    StructuredSpace& operator=(const StructuredSpace&) = delete;
-    StructuredSpace(StructuredSpace&&) noexcept = default;
-    StructuredSpace& operator=(StructuredSpace&&) noexcept = default;
+    PStruct() = default;
+    virtual ~PStruct() = default;
+    PStruct(const PStruct&) = delete;
+    PStruct& operator=(const PStruct&) = delete;
+    PStruct(PStruct&&) noexcept = default;
+    PStruct& operator=(PStruct&&) noexcept = default;
 
     template <typename Fn>
     void registerParams(Fn&& fn);
@@ -404,11 +414,17 @@ public:
 
     json toJson() const;
     void fromJson(const json& j);
+    bool tryFromJson(const json& j) noexcept;
 
     std::vector<double> vectorize() const;
     std::vector<double> vectorizeDouble() const;
     void unvectorize(const std::vector<double>& v);
     void unvectorizeDouble(const std::vector<double>& v);
+
+    // Short aliases (zero-break)
+    std::vector<double> vec() const { return vectorize(); }
+    void unvec(const std::vector<double>& v) { unvectorize(v); }
+    std::vector<ComponentMeta> layout() const { return componentLayout(); }
 
     bool validate() const;
 
@@ -426,13 +442,36 @@ protected:
     ParameterSpace space_;
 };
 
+// Backward-compatible alias. New code should use PStruct directly.
+template <typename Derived>
+using StructuredSpace = PStruct<Derived>;
+
+// ---- Convenience aliases (zero-break, fully backward compatible) ----
+template <typename T>
+using TParam = Param<T>;
+
+using EParamRaw = EnumParameter;
+
+using CompMeta = ParameterSpace::ComponentMeta;
+
+// Non-throwing file loader: read `path`, parse JSON, then call tryFromJson.
+// Works for both ParameterSpace and PStruct<Derived> (both expose tryFromJson).
+template <typename SpaceT>
+bool tryLoadJson(SpaceT& s, const std::string& path) noexcept;
+
 // ============================================================================
-// Structured parameter registration macro
-// (must stay in the header: it generates for_each_param inside the user's
-//  derived struct at the macro use site)
+// Parameter macros  (must stay in the header)
+//   - AUROX_PARAMS(...)       : generates for_each_param inside the derived
+//                               struct (used by sync / serialize / vectorize).
+//   - PARAM_REG(...)          : replaces the verbose
+//                               registerParams([this](auto& space){ ... })
+//                               lambda boilerplate.
+//   - PARAM_BIND(param, ...)  : calls param.bind(space, "param", ...) where the
+//                               registered name is auto-derived from the
+//                               variable name, so the string literal is gone.
 // ============================================================================
 
-#define AUROX_STRUCTURED_PARAMS(...)                         \
+#define AUROX_PARAMS(...)                                   \
     template <typename Fn>                                  \
     void for_each_param(Fn&& fn)                            \
     {                                                       \
@@ -454,9 +493,28 @@ protected:
         aurox_apply_params(__VA_ARGS__);                    \
     }
 
+// PARAM_REG wraps the registration boilerplate. Inside it, the PSpace
+// reference is named `space`, which PARAM_BIND relies on.
+#define PARAM_REG(...)                                      \
+    registerParams([this](auto& space) { __VA_ARGS__ })
+
+// PARAM_BIND stringizes the variable name as the registered parameter name,
+// so you no longer repeat the string
+// (e.g. Kp.bind(space, "Kp", ...)  ->  PARAM_BIND(Kp, ...)).
+#define PARAM_BIND(param, ...)                              \
+    (param).bind(space, #param, __VA_ARGS__)
+
+
+// Backward-compatible macro names (kept for compatibility; prefer PARAM_REG / PARAM_BIND).
+#define AUROX_REG   PARAM_REG
+#define AUROX_BIND  PARAM_BIND
 } // namespace Space
 } // namespace AuroX
 
+// Namespace alias: write PSpace::X instead of AuroX::Space::X.
+//   PSpace::Param<double>, PSpace::PStruct<...>, PSpace::TParam<double>, ...
+namespace PSpace = AuroX::Space;
+
 // Template implementations (NumericTraits specializations, TypedParameter<T>,
-// ParameterSpace template members, Param<T>, StructuredSpace<Derived>).
+// ParameterSpace template members, Param<T>, PStruct<Derived>).
 #include "ParameterSpace.ipp"

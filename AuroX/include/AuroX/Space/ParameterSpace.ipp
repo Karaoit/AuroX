@@ -12,6 +12,8 @@
 
 #include <cmath>
 #include <utility>
+#include <cassert>
+#include <fstream>
 
 namespace AuroX {
 namespace Space {
@@ -268,123 +270,156 @@ template <typename T>
 const TypedParameter<T>* Param<T>::raw() const { return raw_; }
 
 // ============================================================================
-// StructuredSpace<Derived>
+// PStruct<Derived>
 // ============================================================================
 
 template <typename Derived>
 template <typename Fn>
-void StructuredSpace<Derived>::registerParams(Fn&& fn) {
+void PStruct<Derived>::registerParams(Fn&& fn) {
     fn(space_);
     sync_from_space();
 }
 
 template <typename Derived>
-void StructuredSpace<Derived>::sync_to_space() {
+void PStruct<Derived>::sync_to_space() {
     derived().for_each_param([](auto& p) { p.sync_to_raw(); });
 }
 
 template <typename Derived>
-void StructuredSpace<Derived>::sync_from_space() {
+void PStruct<Derived>::sync_from_space() {
     derived().for_each_param([](auto& p) { p.sync_from_raw(); });
 }
 
 template <typename Derived>
-bool StructuredSpace<Derived>::rebind() {
+bool PStruct<Derived>::rebind() {
     bool ok = true;
     derived().for_each_param([&](auto& p) { if (!p.rebind(space_)) ok = false; });
     return ok;
 }
 
 template <typename Derived>
-ParameterSpace& StructuredSpace<Derived>::space() {
+ParameterSpace& PStruct<Derived>::space() {
     sync_to_space();
     return space_;
 }
 
 template <typename Derived>
-const ParameterSpace& StructuredSpace<Derived>::space() const {
-    const_cast<StructuredSpace*>(this)->sync_to_space();
+const ParameterSpace& PStruct<Derived>::space() const {
+    const_cast<PStruct*>(this)->sync_to_space();
     return space_;
 }
 
 template <typename Derived>
-json StructuredSpace<Derived>::toJson() const {
-    auto* self = const_cast<StructuredSpace*>(this);
+json PStruct<Derived>::toJson() const {
+    auto* self = const_cast<PStruct*>(this);
     self->sync_to_space();
     return space_.toJson();
 }
 
 template <typename Derived>
-void StructuredSpace<Derived>::fromJson(const json& j) {
+void PStruct<Derived>::fromJson(const json& j) {
     space_.fromJson(j);
     rebind();
     sync_from_space();
 }
+// template <typename Derived>
+// bool PStruct<Derived>::tryFromJson(const json& j) noexcept {
+//     try {
+//         fromJson(j);
+//         return true;
+//     } catch (...) {
+//         return false;
+//     }
+// }
 
 template <typename Derived>
-std::vector<double> StructuredSpace<Derived>::vectorize() const {
-    auto* self = const_cast<StructuredSpace*>(this);
+std::vector<double> PStruct<Derived>::vectorize() const {
+    auto* self = const_cast<PStruct*>(this);
     self->sync_to_space();
     return space_.vectorizeDouble();
 }
 
 template <typename Derived>
-std::vector<double> StructuredSpace<Derived>::vectorizeDouble() const { return vectorize(); }
+std::vector<double> PStruct<Derived>::vectorizeDouble() const { return vectorize(); }
 
 template <typename Derived>
-void StructuredSpace<Derived>::unvectorize(const std::vector<double>& v) {
+void PStruct<Derived>::unvectorize(const std::vector<double>& v) {
     space_.unvectorizeDouble(v);
     sync_from_space();
 }
 
 template <typename Derived>
-void StructuredSpace<Derived>::unvectorizeDouble(const std::vector<double>& v) { unvectorize(v); }
+void PStruct<Derived>::unvectorizeDouble(const std::vector<double>& v) { unvectorize(v); }
 
 template <typename Derived>
-bool StructuredSpace<Derived>::validate() const {
-    auto* self = const_cast<StructuredSpace*>(this);
+bool PStruct<Derived>::validate() const {
+    auto* self = const_cast<PStruct*>(this);
     self->sync_to_space();
     bool valid = true;
     for (std::size_t i = 0; i < space_.size(); ++i) {
         const auto* p = space_.at(i);
         if (p && !p->isValid()) { valid = false; break; }
     }
+#ifndef NDEBUG
+    // Debug assertion: every declared Param/EnumParam must be bound via
+    // PARAM_BIND inside PARAM_REG. A forgotten PARAM_BIND leaves the member
+    // unbound and unsynced, which is a silent user error we want to catch.
+    derived().for_each_param([&](const auto& p) {
+        assert(p.isBound() && "PStruct::validate: a Param/EnumParam was never "
+               "bind()-ed - did you forget a PARAM_BIND for it inside PARAM_REG?");
+    });
+#endif
     return valid;
 }
 
 template <typename Derived>
-std::size_t StructuredSpace<Derived>::size() const { return space_.size(); }
+std::size_t PStruct<Derived>::size() const { return space_.size(); }
 
 template <typename Derived>
-bool StructuredSpace<Derived>::empty() const { return space_.empty(); }
+bool PStruct<Derived>::empty() const { return space_.empty(); }
 
 template <typename Derived>
-std::vector<std::string> StructuredSpace<Derived>::names() const { return space_.names(); }
+std::vector<std::string> PStruct<Derived>::names() const { return space_.names(); }
 
 template <typename Derived>
-std::vector<ParameterSpace::ComponentMeta> StructuredSpace<Derived>::componentLayout() const {
+std::vector<ParameterSpace::ComponentMeta> PStruct<Derived>::componentLayout() const {
     return space_.componentLayout();
 }
 
 template <typename Derived>
-ParameterBase* StructuredSpace<Derived>::get(const std::string& name) {
+ParameterBase* PStruct<Derived>::get(const std::string& name) {
     sync_to_space();
     return space_.get(name);
 }
 
 template <typename Derived>
-const ParameterBase* StructuredSpace<Derived>::get(const std::string& name) const {
-    auto* self = const_cast<StructuredSpace*>(this);
+const ParameterBase* PStruct<Derived>::get(const std::string& name) const {
+    auto* self = const_cast<PStruct*>(this);
     self->sync_to_space();
     return space_.get(name);
 }
 
 template <typename Derived>
-Derived& StructuredSpace<Derived>::derived() { return static_cast<Derived&>(*this); }
+Derived& PStruct<Derived>::derived() { return static_cast<Derived&>(*this); }
 
 template <typename Derived>
-const Derived& StructuredSpace<Derived>::derived() const {
+const Derived& PStruct<Derived>::derived() const {
     return static_cast<const Derived&>(*this);
+}
+
+// Non-throwing file loader: open `path`, parse JSON, then call tryFromJson.
+// Works for both ParameterSpace and PStruct<Derived> (both expose tryFromJson).
+template <typename SpaceT>
+bool tryLoadJson(SpaceT& s, const std::string& path) noexcept {
+    try {
+        std::ifstream f(path);
+        if (!f) return false;
+        json j;
+        f >> j;
+        return s.tryFromJson(j);
+    } catch (...) {
+        return false;
+    }
 }
 
 } // namespace Space
