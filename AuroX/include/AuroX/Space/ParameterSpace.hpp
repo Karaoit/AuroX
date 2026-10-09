@@ -424,7 +424,9 @@ public:
     // Short aliases (zero-break)
     std::vector<double> vec() const { return vectorize(); }
     void unvec(const std::vector<double>& v) { unvectorize(v); }
-    std::vector<ComponentMeta> layout() const { return componentLayout(); }
+    // 注：ComponentMeta 是 ParameterSpace 的嵌套类型，PStruct 并不继承它，
+    //     因此这里必须写全限定名（原先的裸 ComponentMeta 无法通过编译）。
+    std::vector<ParameterSpace::ComponentMeta> layout() const { return componentLayout(); }
 
     bool validate() const;
 

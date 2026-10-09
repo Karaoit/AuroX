@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASpace 重构设计 · 如非必要勿增实体</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg2:#f6f8fa; --bg3:#eef1f5;
+    --fg:#1f2328; --fg2:#57606a; --fg3:#8c959f;
+    --line:#d0d7de; --line2:#e6eaef;
+    --blue:#0969da; --red:#cf222e; --green:#1a7f37;
+    --amber:#9a6700; --purple:#8250df;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    line-height:1.7; font-size:15px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:38px 26px 90px}
+  header.top{border-bottom:2px solid var(--line); padding-bottom:20px; margin-bottom:26px}
+  header.top h1{font-size:27px; margin:0 0 8px; letter-spacing:.2px}
+  header.top .sub{color:var(--fg2); font-size:13.5px}
+  header.top .meta{margin-top:12px; display:flex; flex-wrap:wrap; gap:7px}
+  .tag{display:inline-block; padding:2px 10px; border-radius:20px; font-size:11.5px;
+       background:var(--bg3); color:var(--fg2); border:1px solid var(--line)}
+  h2{font-size:20px; margin:46px 0 14px; padding-left:11px; border-left:5px solid var(--blue)}
+  h3{font-size:16.5px; margin:30px 0 10px; color:#24292f}
+  h4{font-size:14.5px; margin:20px 0 8px; color:var(--fg2)}
+  p{margin:11px 0}
+  ul,ol{margin:11px 0; padding-left:24px}
+  li{margin:5px 0}
+  code{font-family:"Cascadia Mono",Consolas,"Courier New",monospace; font-size:12.8px;
+       background:var(--bg3); padding:1px 5px; border-radius:4px; color:#0a3069}
+  pre{background:var(--bg2); border:1px solid var(--line); border-radius:8px;
+      padding:13px 15px; overflow-x:auto; margin:12px 0}
+  pre code{background:none; padding:0; color:var(--fg); font-size:12.4px; line-height:1.62}
+  pre .c{color:var(--fg3)}
+  pre .k{color:var(--purple)}
+  pre .n{color:var(--amber)}
+  .cap{font-size:12.5px; color:var(--fg2); margin:6px 0 18px; text-align:center}
+  table{border-collapse:collapse; width:100%; margin:14px 0; font-size:13.3px}
+  th,td{border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top}
+  th{background:var(--bg3); font-weight:600}
+  tr:nth-child(even) td{background:#fbfcfd}
+  tr.cut td{background:#fff5f5}
+  tr.keep td{background:#f2fbf4}
+  .box{border:1px solid var(--line); border-left:4px solid var(--blue);
+       background:var(--bg2); border-radius:6px; padding:13px 17px; margin:18px 0}
+  .box.warn{border-left-color:var(--amber); background:#fffdf5}
+  .box.bad {border-left-color:var(--red);   background:#fffafa}
+  .box.good{border-left-color:var(--green); background:#f7fdf9}
+  .box .t{font-weight:700; margin-bottom:5px; font-size:14px}
+  .ok{color:var(--green); font-weight:600}
+  .no{color:var(--red); font-weight:600}
+  .kpi{display:grid; grid-template-columns:repeat(4,1fr); gap:11px; margin:20px 0}
+  .kpi div{border:1px solid var(--line); border-radius:8px; padding:11px; text-align:center; background:var(--bg2)}
+  .kpi b{display:block; font-size:21px; color:var(--blue); line-height:1.3}
+  .kpi span{font-size:11.5px; color:var(--fg2)}
+  nav.toc{background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:15px 22px; margin:24px 0}
+  nav.toc ol{margin:0; padding-left:20px; font-size:13.8px}
+  nav.toc a{color:var(--blue); text-decoration:none}
+  nav.toc a:hover{text-decoration:underline}
+  footer{margin-top:52px; padding-top:18px; border-top:1px solid var(--line);
+         color:var(--fg3); font-size:12.5px}
+  svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+
+  /* ---------- 交互演示 ---------- */
+  .stage{display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:18px; align-items:start}
+  @media (max-width:920px){ .stage{grid-template-columns:1fr} }
+  .board-wrap{position:relative; background:var(--bg); border:1px solid var(--line);
+              border-radius:12px; padding:8px}
+  #board{display:block; width:100%; height:auto}
+  .badge{position:absolute; top:16px; left:16px; display:inline-flex; align-items:center;
+         padding:4px 12px; border-radius:20px; font-size:12.5px; font-weight:600;
+         border:1px solid transparent; opacity:0; transform:translateY(-4px);
+         transition:opacity .3s, transform .3s; pointer-events:none}
+  .badge.show{opacity:1; transform:translateY(0)}
+  .badge.ok  {background:#eaf7ee; color:var(--green); border-color:#b6e0c4}
+  .badge.fail{background:#fdeceb; color:var(--red);   border-color:#f5b7b3}
+  .badge.info{background:#eaf2fd; color:var(--blue);  border-color:#b6d4f5}
+  .badge.warn{background:#fff8e6; color:var(--amber); border-color:#f0dca0}
+  .board-legend{display:flex; flex-wrap:wrap; gap:14px; padding:9px 13px 5px;
+                border-top:1px solid var(--line2); margin-top:6px; font-size:11.5px; color:var(--fg2)}
+  .board-legend span{display:inline-flex; align-items:center; gap:6px}
+  .lg{width:12px; height:12px; border-radius:50%; display:inline-block; flex:none}
+  .lg.cur{background:var(--blue); box-shadow:0 0 0 3px rgba(9,105,218,.15)}
+  .lg.pred{border:2px dashed var(--purple); background:transparent}
+  .lg.act{background:var(--red)}
+  .lg.goal{background:#fffbeb; border:2px solid var(--amber); transform:rotate(45deg); border-radius:2px}
+  .lg.chain{background:var(--blue); opacity:.45}
+  .lg.search{background:#dce3ea}
+  .panel{background:var(--bg2); border:1px solid var(--line); border-radius:12px;
+         padding:16px; position:sticky; top:16px}
+  .step-tag{display:inline-block; font-size:11.5px; font-weight:700; letter-spacing:.5px;
+            color:var(--blue); background:#eaf2fd; border:1px solid #c8ddf7;
+            padding:2px 10px; border-radius:20px; margin-bottom:9px}
+  .panel h3{font-size:16px; margin:0 0 7px; line-height:1.4}
+  .panel .desc{font-size:12.8px; color:var(--fg2); margin:0 0 14px; line-height:1.68}
+  .vectors{display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:14px}
+  .vec{background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 11px}
+  .vec label{display:block; font-size:10.5px; color:var(--fg3); margin-bottom:2px}
+  .vec .val{font-family:"Cascadia Mono",Consolas,monospace; font-size:13.5px;
+            font-weight:600; color:var(--blue)}
+  .vec.goal .val{color:var(--amber)}
+  .sec{margin-bottom:14px}
+  .sec .sh{font-size:11px; font-weight:700; letter-spacing:.8px; color:var(--fg3);
+           text-transform:uppercase; margin:0 0 7px}
+  .chain{display:flex; flex-wrap:wrap; align-items:center; gap:5px; min-height:32px}
+  .chip{display:inline-flex; align-items:center; gap:6px; padding:4px 10px 4px 6px;
+        border-radius:8px; font-size:12.3px; font-weight:600;
+        border:1px solid var(--line); background:var(--bg); color:var(--fg2); transition:all .25s}
+  .chip .idx{display:inline-flex; align-items:center; justify-content:center;
+             width:16px; height:16px; border-radius:5px; background:var(--bg3);
+             color:var(--fg3); font-size:10px; font-weight:700}
+  .chip.done{background:#eaf7ee; border-color:#b6e0c4; color:var(--green)}
+  .chip.done .idx{background:#cdeed7; color:var(--green)}
+  .chip.fail{background:#fdeceb; border-color:#f5b7b3; color:var(--red)}
+  .chip.fail .idx{background:#f8d3d0; color:var(--red)}
+  .chip.void{opacity:.45}
+  .arrow{color:var(--fg3); font-size:12px}
+  .empty{font-size:12.3px; color:var(--fg3); font-style:italic}
+  .acts{display:flex; flex-direction:column; gap:5px}
+  .act-row{display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
+           padding:6px 10px; border-radius:7px; background:var(--bg);
+           border:1px solid var(--line); font-size:12.3px; transition:all .3s}
+  .act-row .nm{font-weight:600}
+  .act-row .dl{font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--blue);
+               text-align:right}
+  .act-row .cd{grid-column:1 / -1; font-size:10.8px; color:var(--fg3); margin-top:1px}
+  .act-row.banned{background:#fdeceb; border-color:#f5b7b3; opacity:.85}
+  .act-row.banned .nm,.act-row.banned .dl{text-decoration:line-through; color:var(--red)}
+  .controls{display:flex; align-items:center; gap:10px; margin-top:18px; flex-wrap:wrap}
+  button{font-family:inherit; font-size:13px; font-weight:600; padding:7px 15px;
+         border-radius:8px; border:1px solid var(--line); background:var(--bg);
+         color:var(--fg); cursor:pointer; transition:all .18s}
+  button:hover:not(:disabled){background:var(--bg3); border-color:#b9c2cb}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+  .steps{display:flex; gap:5px; flex:1; justify-content:center; flex-wrap:wrap}
+  .pip{width:24px; height:5px; border-radius:3px; background:var(--line); cursor:pointer; transition:all .25s}
+  .pip.on{background:var(--blue)}
+  .pip.past{background:#a8c8ee}
+  #code{background:#f8fafc; border:1px solid var(--line); border-radius:8px;
+        padding:11px 13px; margin-top:14px; font-family:"Cascadia Mono",Consolas,monospace;
+        font-size:11.8px; line-height:1.66; white-space:pre; overflow-x:auto; color:#1f2328}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>ASpace 重构设计</h1>
+  <div class="sub">动作 = 结构体 · 如非必要勿增实体 · 用最小的结构支撑 1.html 的全部效果</div>
+  <div class="meta">
+    <span class="tag">4 个类型 / 0 个宏 / 1 个头文件</span>
+    <span class="tag">Action 由用户直接声明为成员</span>
+    <span class="tag">不用 add(action)</span>
+    <span class="tag">含交互演示（对齐 1.html）</span>
+    <span class="tag">未改动任何源码</span>
+  </div>
+</header>
+
+<div class="box good">
+  <div class="t">一句话结论</div>
+  <p style="margin:0">按「<b>如非必要，勿增实体</b>」重做后，动作层收缩到 <b>4 个类型（<code>Condition</code> / <code>Action</code> / <code>Chain</code> / <code>ASpace</code>）、0 个宏、1 个头文件、约 120 行</b>。
+  你给出的 <code>Action</code> 五个字段全部保留，<b>只增加了唯一一个非加不可的字段：<code>nxt</code>（结束状态预测）</b>——
+  因为 1.html 的「前向推演 / 选链 / 判定状态异常 / 重规划」这四帧，没有它就一句都写不出来。
+  其余一切（<code>Ctx</code>、<code>Out</code>、注册表、选择器、效果契约、序列化）<b>全部砍掉</b>，逐条理由见第 2 节。</p>
+</div>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#s1">设计语言：把「实体」一个一个数清楚</a></li>
+    <li><a href="#s2">实体审计表 —— 留下的 4 个，砍掉的 12 个</a></li>
+    <li><a href="#s3">Action 结构体：你给的 5 个字段 + 唯一必需的第 6 个</a></li>
+    <li><a href="#s4">三个使用范式：外部函数包装 / 多执行函数 / 条件向量</a></li>
+    <li><a href="#s5">完整骨架代码（header-only）</a></li>
+    <li><a href="#s6">三档用法</a></li>
+    <li><a href="#s7">交互演示：对齐 1.html 的 9 帧</a></li>
+    <li><a href="#s8">与上一版对比 · 落地顺序 · 待清理文件</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================================ -->
+<h2 id="s1">1 · 设计语言：把「实体」一个一个数清楚</h2>
+
+<p>「如非必要，勿增实体」落到代码上只有两条可操作的判据：</p>
+
+<div class="box">
+  <p style="margin:0"><b>判据 A（类型）：</b>如果删掉这个类型，<b>1.html 里有没有任何一帧画不出来？</b>——没有，就不该存在。<br>
+  <b>判据 B（字段）：</b>如果删掉这个字段，<b>有没有哪一行代码必须改成别的东西才能表达？</b>——没有，就不该存在。</p>
+</div>
+
+<p>我按这两条把你给的 <code>Action</code> 与 1.html 的九帧逐一对齐，结论是：</p>
+
+<table>
+  <tr><th style="width:22%">1.html 的帧</th><th style="width:32%">它实际需要什么</th><th>由谁提供</th></tr>
+  <tr><td>00 概览（状态 + 动作集）</td><td>状态向量、动作的名字与类别</td><td><code>ASpace::cur_</code>、<code>Action::name/type</code></td></tr>
+  <tr><td>01 前向推演（逐层展开）</td><td><b>在「假设状态」上推演下一步</b></td><td class="no">必须新增 <code>Action::nxt</code></td></tr>
+  <tr><td>02 选链（回溯成序列）</td><td>一串动作的序列</td><td><code>Chain::acts</code></td></tr>
+  <tr><td>03 执行第 1 步 — 校验通过</td><td>执行 + 实测与预测比对</td><td><code>Action::run</code> + <code>nxt</code></td></tr>
+  <tr><td>04 异常（预测 (2,2) 实测 (2,1)）</td><td>预测值与实测值的偏差</td><td class="no">还是 <code>nxt</code></td></tr>
+  <tr><td>05 封锁（禁用集）</td><td>一个「本轮不许再选中」的集合</td><td><code>ASpace::ban_</code></td></tr>
+  <tr><td>06 重规划（换约束重搜）</td><td>换约束后重跑同一次搜索</td><td><code>ban()</code> + <code>plan()</code></td></tr>
+  <tr><td>07 新链</td><td>新的动作序列</td><td><code>Chain</code></td></tr>
+  <tr><td>08 完成</td><td>到达目标</td><td>无（状态比对）</td></tr>
+  <tr><td>动作行里的「条件」列</td><td>「总是 / x ≤ 3 / y ≥ 1」</td><td><b>你已有的</b> <code>Action::conditions</code></td></tr>
+</table>
+
+<div class="box good">
+  <div class="t">这张表说明了一件很省事的事</div>
+  <p style="margin:0">1.html 的九帧，<b>只需要「执行」和「预测」两种行为</b>，加上一个禁用集。
+  你给的字段里已经有了「执行」（<code>run</code>）与「条件」（<code>conditions</code>），<b>唯一缺的就是「预测」</b>。
+  所以这次重构不需要发明任何新概念——<b>只补一个字段，其余全是你已经想好的。</b></p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s2">2 · 实体审计表 —— 留下的 4 个，砍掉的 12 个</h2>
+
+<h3>2.1 留下的（4 个，每一个都过判据 A）</h3>
+
+<table>
+  <tr><th style="width:16%">类型</th><th style="width:12%">字段数</th><th>删掉它，1.html 的哪一帧就画不出来</th></tr>
+  <tr class="keep"><td><code>Condition</code></td><td>2</td><td>动作行里的条件列；且 01 帧的「条件不满足则不生成边」直接依赖它 —— <b>没有条件，搜索会生成物理上不该走的路径</b></td></tr>
+  <tr class="keep"><td><code>Action</code></td><td>6</td><td>全部九帧。它是这个层唯一的主角。</td></tr>
+  <tr class="keep"><td><code>Chain</code></td><td>4</td><td>02 / 07 帧（动作序列）。<b>为什么不直接用 <code>std::vector</code>？</b>因为「不可达」与「已到达」都会得到空序列，而它们是相反的结果——必须能区分，所以需要一个带 <code>ok/why</code> 的返回值。</td></tr>
+  <tr class="keep"><td><code>ASpace</code></td><td>4</td><td>容器 + 当前状态 + 禁用集 + 搜索。<b>它是唯一有多态的类型</b>（<code>plan</code> 可覆写），也是用户唯一需要派生的。</td></tr>
+</table>
+
+<h3>2.2 砍掉的（12 个，每个都说清为什么不再必要）</h3>
+
+<table>
+  <tr><th style="width:22%">被砍掉的类型</th><th style="width:42%">它原本负责什么</th><th>现在由谁取代（或为什么根本不需要）</th></tr>
+  <tr class="cut"><td><code>Ctx</code> / <code>ContextBase</code><br>（上一版的纯虚上下文）</td><td>把参数空间 / 状态 / 观测收拢在一个共享上下文里交给动作</td><td><b>被闭包取代。</b>你给的 <code>RunFn</code> 是<b>无参</b>的（<code>action.run = [..](){ function_1(..); }</code>）——这说明「动作需要的一切」都由闭包自己捕获。既然如此，框架再提供一个上下文对象就是重复。<br><b>框架只需要一个 <code>Vec cur_</code></b>（供搜索与条件判定），其余全在用户手里。</td></tr>
+  <tr class="cut"><td><code>Out</code>（ok / why）</td><td>执行结果</td><td><b>用 <code>bool</code>。</b>你要的是「结果只返回 ok / false」。失败原因属于日志，不属于框架返回值。</td></tr>
+  <tr class="cut"><td><code>SSp</code> / <code>OSp</code></td><td>状态空间 / 观测空间</td><td>上一轮已定：<b>不进本层</b>。</td></tr>
+  <tr class="cut"><td><code>Node</code> / <code>Edge</code> / <code>EdgeKind</code></td><td>图的节点与边</td><td>搜索内部的临时结构，<b>用 <code>std::pair&lt;int,int&gt;</code> 就地表达</b>，不配类型。</td></tr>
+  <tr class="cut"><td><code>ActBase</code>（抽象动作基类）</td><td>继承 + <code>clone()</code> + <code>type()</code></td><td><b>动作就是数据</b>，不需要多态。你的 <code>Action</code> 是 <code>struct</code>，这本身就否定了基类。</td></tr>
+  <tr class="cut"><td><code>ActionSlot</code> / <code>BindSource</code> / <code>ParamRef</code></td><td>参数四源绑定</td><td>闭包捕获即可。<b>一个 <code>Vector</code> 换四个类型。</b></td></tr>
+  <tr class="cut"><td><code>EffectSpec</code></td><td>副作用契约（写集 / 代价 / 并发）</td><td>链与图都是串行语义，无并发场景；代价无消费方。</td></tr>
+  <tr class="cut"><td><code>ActionRegistry</code>（三张表）</td><td>按 type 反序列化重建</td><td>本轮不做序列化，工厂失去全部理由。</td></tr>
+  <tr class="cut"><td><code>ActionSelector</code> 全家</td><td>可插拔的选取策略</td><td><b>一个 <code>virtual plan()</code> 就是全部。</b></td></tr>
+  <tr class="cut"><td><code>ActionGraph</code> / <code>ActionPlan</code></td><td>图的容器 + 计划的包装</td><td>并入 <code>Chain</code>（链 = 线性边表）。</td></tr>
+  <tr class="cut"><td><code>GuardResult</code> / <code>ExecutionState</code> / <code>SpaceDiag</code></td><td>三段诊断 / 断点续跑</td><td>条件不满足返回 <code>false</code> 即可；无断点续跑需求。</td></tr>
+  <tr class="cut"><td>9 个旧宏</td><td>成员清单 / 遍历清单 / 注册清单</td><td><b>0 个宏。</b>你的用法示例里已经没有宏——<code>Action</code> 直接声明为成员、字段直接赋值，宏失去了存在理由。</td></tr>
+</table>
+
+<div class="kpi">
+  <div><b>4</b><span>类型<br>（上一版 5 → 本版 4）</span></div>
+  <div><b>0</b><span>宏<br>（上一版 3 → 本版 0）</span></div>
+  <div><b>1</b><span>头文件<br>（旧实现 15 个）</span></div>
+  <div><b>~120</b><span>行<br>（旧实现 ~3600 行）</span></div>
+</div>
+
+<div class="box warn">
+  <div class="t">一处需要你确认的取舍：<code>Ctx</code> 被砍掉了</div>
+  <p style="margin:0">上一轮你要求「共享上下文必须是必须重写的纯虚类」。这一轮你给的 <code>RunFn</code> 是<b>无参</b>的，
+  闭包会把需要的一切捕获进去，于是框架级的上下文就成了重复的实体——按「如非必要勿增实体」，我把它砍了。<br>
+  <b>如果你仍想保留它，最小改法只有两步：</b>把 <code>ASpace::cur_</code> 换成一个 <code>Ctx&amp; ctx_</code>，
+  把 <code>virtual Vec cur() const = 0</code> 放回 <code>Ctx</code>。除此之外本设计一行都不用动。</p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s3">3 · <code>Action</code> 结构体：你给的 5 个字段 + 唯一必需的第 6 个</h2>
+
+<pre><code><span class="c">// 执行函数：无参。需要什么就在闭包里捕获什么 —— 这是「外部函数可直接复用」的关键</span>
+<span class="k">using</span> RunFn = std::function&lt;<span class="k">void</span>()&gt;;
+
+<span class="c">// 预测函数：入参是「假设状态」，返回「推演出的下一步状态」</span>
+<span class="k">using</span> NxtFn = std::function&lt;Vec(<span class="k">const</span> Vec&amp;)&gt;;
+
+<span class="c">// ─────────────────────────────────────────────────────────────</span>
+<span class="c">//  Action —— 基础结构体：纯数据，无继承、无虚函数、可聚合初始化</span>
+<span class="c">// ─────────────────────────────────────────────────────────────</span>
+<span class="k">struct</span> Action {
+    Str      name;        <span class="c">// ① 实例名（唯一身份）        ← 你给的</span>
+    Str      type;        <span class="c">// ② 类别名（同族动作共用）    ← 你给的</span>
+    uint64_t hash = <span class="n">0</span>;    <span class="c">// ③ 全局唯一 hash（快速查找）  ← 你给的</span>
+    RunFn    run;         <span class="c">// ④ 执行函数（可为外部函数的包装）← 你给的</span>
+    std::vector&lt;Condition&gt; conditions;   <span class="c">// ⑤ 条件向量            ← 你给的</span>
+
+    NxtFn    nxt;         <span class="c">// ⑥ 结束状态预测             ★ 唯一必需新增</span>
+
+    <span class="c">// 三个派生判断，避免调用方到处写 if</span>
+    <span class="k">bool</span> can (<span class="k">const</span> Vec&amp; x) <span class="k">const</span> { <span class="k">for</span> (<span class="k">auto</span>&amp; c : conditions) <span class="k">if</span> (!c.test(x)) <span class="k">return false</span>; <span class="k">return true</span>; }
+    Vec  next(<span class="k">const</span> Vec&amp; x) <span class="k">const</span> { <span class="k">return</span> nxt ? nxt(x) : x; }   <span class="c">// 空 = 状态不变</span>
+    <span class="k">void</span> exec()           <span class="k">const</span> { <span class="k">if</span> (run) run(); }
+};
+<span class="k">using</span> Act = Action;   <span class="c">// 手感别名（命名约定：长名配短别名）</span>
+</code></pre>
+<p class="cap">代码 1 · <code>Action</code> 结构体。前 5 个字段原样来自你的设计，第 6 个是唯一新增</p>
+
+<h3>3.1 为什么第 6 个字段「非加不可」</h3>
+
+<p>它的必要性只在两处体现，但这两处各自都是 1.html 的骨干：</p>
+
+<table>
+  <tr><th style="width:26%">用途</th><th style="width:34%">没有它时会发生什么</th><th>1.html 里的位置</th></tr>
+  <tr><td><b>前向推演</b><br>（plan 要离线在假设状态上走）</td><td>搜索无法知道「走这一步会到哪」，只能执行才知道——而规划<b>必须在执行之前</b>完成。整个 <code>plan()</code> 会退化成「人工排好顺序」。</td><td>01 帧「逐层展开 18 个状态节点」<br>02 帧「回溯成链」</td></tr>
+  <tr><td><b>判定状态异常</b></td><td>「异常」这个词没有判定依据。必须有一个<b>事先算出的预测值</b>，才能与实测值比较出偏差。</td><td>04 帧「预测 (2,2) 实测 (2,1)」<br>06 帧「换约束重搜」</td></tr>
+</table>
+
+<div class="box">
+  <div class="t">换一种说法</div>
+  <p style="margin:0">你给的 <code>conditions</code> 回答的是「<b>这一步能不能走</b>」；
+  新增的 <code>nxt</code> 回答的是「<b>走完这一步会到哪</b>」。
+  <b>一个管入口，一个管出口。</b>只有入口没有出口，就只能单步执行，无法规划、也无法发现异常——
+  而 1.html 展示的正是「规划 → 执行 → 校验 → 重规划」这个闭环。</p>
+</div>
+
+<h3>3.2 <code>type</code> 与 <code>name</code>、<code>hash</code> 的分工</h3>
+
+<table>
+  <tr><th style="width:16%">字段</th><th style="width:26%">回答的问题</th><th>用法约定</th></tr>
+  <tr><td><code>name</code></td><td>「我是哪一个」</td><td>同一空间内唯一。面向上层与日志，如 <code>"go"</code>、<code>"cut"</code></td></tr>
+  <tr><td><code>type</code></td><td>「我属于哪一族」</td><td>同族共用，如 <code>"move"</code>、<code>"tool"</code>。用于<b>按类别批量禁用</b>（<code>banType("move")</code> 这类扩展的落点）</td></tr>
+  <tr><td><code>hash</code></td><td>「怎么最快找到我」</td><td><b>登记时自动补</b>：<code>hashOf(type + "/" + name)</code>。用户通常不写它；写了就以写的为准。</td></tr>
+</table>
+
+<div class="box good">
+  <div class="t">为什么 hash 用「自动补 + 冲突即抛异常」，而不是让用户手填</div>
+  <p style="margin:0">手填唯一的数字，是让使用者去承担一件机器该做的事，且一定会出现复制粘贴导致的重号。
+  自动补的版本用 <code>constexpr</code> FNV-1a 在<b>编译期</b>算好（<code>type + "/" + name</code> 拼接保证跨类别不撞），
+  零运行时开销；万一真撞了，<b>登记时直接抛异常</b>——绝不静默覆盖，因为静默覆盖会表现为「某个动作莫名执行了另一个动作的行为」，
+  是最难查的一类故障。</p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s4">4 · 三个使用范式</h2>
+
+<h3>4.1 范式一：外部已有函数 —— 一行包装</h3>
+
+<p>这是你提出的核心场景。因为 <code>RunFn</code> 是<b>无参闭包</b>，任何签名的外部函数都能在一行里被接上：</p>
+
+<pre><code><span class="c">// ── 外部文件（早就写好了，一行都不用改）──────────────────────</span>
+<span class="k">void</span> moveCam(<span class="k">int</span> a, <span class="k">int</span> b);        <span class="c">// 移动镜头</span>
+<span class="k">void</span> zoomTo (<span class="k">double</span> z);           <span class="c">// 变焦</span>
+<span class="k">void</span> sortPlate(<span class="k">int</span> n, <span class="k">bool</span> rev);  <span class="c">// 分选盘</span>
+
+<span class="c">// ── 自定义动作空间内 ────────────────────────────────────────</span>
+Action go, zoom, sort;
+
+<span class="c">// 把外部函数与它的实参一起「焊」进闭包</span>
+go.run   = [&amp;]{ moveCam(<span class="n">2</span>, <span class="n">3</span>); };          <span class="c">// ← 你给的写法</span>
+zoom.run = [&amp;]{ zoomTo(<span class="n">1.5</span>); };
+
+<span class="c">// 参数来自运行时变量时，按值捕获即可</span>
+<span class="k">int</span> plateN = <span class="n">4</span>;  <span class="k">bool</span> rev = <span class="k">true</span>;
+sort.run = [plateN, rev]{ sortPlate(plateN, rev); };
+</code></pre>
+<p class="cap">代码 2 · 外部函数 → <code>Action::run</code> 的三种接法：无参、带常量实参、按值捕获运行时变量</p>
+
+<h3>4.2 范式二：同一族动作的多种执行函数</h3>
+
+<p>「以此类推多种执行函数」——每个动作各自持有自己的闭包，互不干扰，且共享同一套 <code>type</code> 与状态推演：</p>
+
+<pre><code>R.name = <span class="n">"R"</span>;  R.type = <span class="n">"move"</span>;
+R.run  = [&amp;]{ moveCam(+<span class="n">1</span>, <span class="n">0</span>); };
+R.nxt  = [](<span class="k">const</span> Vec&amp; x){ <span class="k">auto</span> y = x; y[<span class="n">0</span>] += <span class="n">1</span>;   <span class="k">return</span> y; };
+
+J.name = <span class="n">"J"</span>;  J.type = <span class="n">"move"</span>;
+J.run  = [&amp;]{ moveCam(+<span class="n">2</span>, <span class="n">0</span>); };
+J.nxt  = [](<span class="k">const</span> Vec&amp; x){ <span class="k">auto</span> y = x; y[<span class="n">0</span>] += <span class="n">2</span>;   <span class="k">return</span> y; };
+J.conditions = { {<span class="n">"y &gt;= 1"</span>, [](<span class="k">const</span> Vec&amp; x){ <span class="k">return</span> x[<span class="n">1</span>] &gt;= <span class="n">1.0</span>; }} };
+</code></pre>
+
+<h3>4.3 范式三：条件向量 —— 与系统状态结合</h3>
+
+<p><code>Condition</code> 是本次唯一需要新增说明的辅助结构，最小到两个字段：</p>
+
+<pre><code><span class="k">struct</span> Condition {
+    Str desc;                             <span class="c">// 人读描述（1.html 动作行里那一列）</span>
+    std::function&lt;<span class="k">bool</span>(<span class="k">const</span> Vec&amp;)&gt; ok;   <span class="c">// 判据；留空 = 恒真</span>
+    <span class="k">bool</span> test(<span class="k">const</span> Vec&amp; x) <span class="k">const</span> { <span class="k">return</span> !ok || ok(x); }
+};
+</code></pre>
+
+<table>
+  <tr><th style="width:24%">语义</th><th>写法</th></tr>
+  <tr><td>恒真（1.html 的「总是」）</td><td><code>{ "总是", {} }</code> —— 或者干脆不往 <code>conditions</code> 里放这一条</td></tr>
+  <tr><td>依赖状态</td><td><code>{ "x &lt;= 3", [](const Vec&amp; x){ return x[0] &lt;= 3.0; } }</code></td></tr>
+  <tr><td>依赖外部量</td><td><code>{ "gain &gt; 0", [&amp;](const Vec&amp;){ return gain_ &gt; 0.0; } }</code> —— 按引用捕获，判据可读实时量</td></tr>
+  <tr><td>多条</td><td><code>a.conditions = { c1, c2 };   // 全部为真才允许执行（AND）</code></td></tr>
+</table>
+
+<div class="box">
+  <div class="t">为什么是「全部为真」而不是「任一为真」</div>
+  <p style="margin:0">安全语义默认从严：条件集合是「<b>放行所需的全部前提</b>」，任一不满足就不执行。
+  需要「或」时，把它写进<b>同一条条件内部</b>（<code>a || b</code>），而不是让向量去猜。这样向量只有一种读法，不需要任何额外字段去标记「这是 AND 还是 OR」。</p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s5">5 · 完整骨架代码（header-only）</h2>
+
+<p>这就是动作层的全部。唯一依赖是标准库——<b>不 include 参数空间、不 include 状态 / 观测空间、不 include 优化器、不 include 硬件</b>。</p>
+
+<pre><code><span class="c">// =====================================================================</span>
+<span class="c">//  ASpace.hpp —— 动作层最小内核（header-only，约 120 行）</span>
+<span class="c">//  设计语言：如非必要，勿增实体。  4 类型 / 0 宏 / 1 头文件。</span>
+<span class="c">// =====================================================================</span>
+#pragma once
+#include &lt;cstdint&gt;
+#include &lt;functional&gt;
+#include &lt;string&gt;
+#include &lt;string_view&gt;
+#include &lt;unordered_map&gt;
+#include &lt;unordered_set&gt;
+#include &lt;vector&gt;
+#include &lt;stdexcept&gt;
+
+<span class="k">namespace</span> AS {
+
+<span class="k">using</span> Str = std::string;
+<span class="k">using</span> Vec = std::vector&lt;<span class="k">double</span>&gt;;          <span class="c">// 中性状态向量：装什么由用户决定</span>
+
+<span class="c">// ── 0. 编译期 hash：全局唯一键，零运行时开销 ─────────────────────</span>
+<span class="k">inline constexpr</span> uint64_t hashOf(std::string_view s) {
+    uint64_t h = <span class="n">1469598103934665603ULL</span>;                     <span class="c">// FNV-1a 64</span>
+    <span class="k">for</span> (<span class="k">char</span> c : s) { h ^= uint64_t((<span class="k">unsigned char</span>)c); h *= <span class="n">1099511628211ULL</span>; }
+    <span class="k">return</span> h;
+}
+
+<span class="c">// ── 1. Condition —— 一条判据（desc 供展示，ok 供判定）────────────</span>
+<span class="k">struct</span> Condition {
+    Str desc;
+    std::function&lt;<span class="k">bool</span>(<span class="k">const</span> Vec&amp;)&gt; ok;
+    <span class="k">bool</span> test(<span class="k">const</span> Vec&amp; x) <span class="k">const</span> { <span class="k">return</span> !ok || ok(x); }
+};
+
+<span class="c">// ── 2. Action —— 基础结构体（纯数据）───────────────────────────</span>
+<span class="k">using</span> RunFn = std::function&lt;<span class="k">void</span>()&gt;;
+<span class="k">using</span> NxtFn = std::function&lt;Vec(<span class="k">const</span> Vec&amp;)&gt;;
+
+<span class="k">struct</span> Action {
+    Str      name;
+    Str      type;
+    uint64_t hash = <span class="n">0</span>;
+    RunFn    run;
+    std::vector&lt;Condition&gt; conditions;
+    NxtFn    nxt;                                  <span class="c">// ★ 唯一必需新增</span>
+
+    <span class="k">bool</span> can (<span class="k">const</span> Vec&amp; x) <span class="k">const</span> {
+        <span class="k">for</span> (<span class="k">auto</span>&amp; c : conditions) <span class="k">if</span> (!c.test(x)) <span class="k">return false</span>;
+        <span class="k">return true</span>;
+    }
+    Vec  next(<span class="k">const</span> Vec&amp; x) <span class="k">const</span> { <span class="k">return</span> nxt ? nxt(x) : x; }
+    <span class="k">void</span> exec()           <span class="k">const</span> { <span class="k">if</span> (run) run(); }
+};
+<span class="k">using</span> Act = Action;
+
+<span class="c">// ── 3. Chain —— 选链产物（链 = 线性边表）───────────────────────</span>
+<span class="k">struct</span> Chain {
+    <span class="k">bool</span> ok = <span class="k">false</span>;
+    Str  why;
+    std::vector&lt;uint64_t&gt; acts;                    <span class="c">// 动作 hash 序列（链）</span>
+    std::vector&lt;std::pair&lt;<span class="k">int</span>,<span class="k">int</span>&gt;&gt; edges;           <span class="c">// 仅 asGraph=true 时填（图）</span>
+};
+
+<span class="c">// ── 4. ASpace —— 动作空间 ──────────────────────────────────────</span>
+<span class="k">class</span> ASpace {
+<span class="k">public</span>:
+    <span class="c">// 登记：把派生类里的 Action 成员一次交给空间（不是逐个 add）</span>
+    <span class="k">template</span> &lt;<span class="k">class</span>... A&gt; <span class="k">void</span> reg(A&amp;... as) { (reg_(as), ...); }
+    <span class="k">void</span> reg_(Action&amp; a);
+
+    <span class="c">// 状态</span>
+    <span class="k">const</span> Vec&amp; cur() <span class="k">const</span>       { <span class="k">return</span> cur_; }
+    <span class="k">void</span>       cur(<span class="k">const</span> Vec&amp; s) { cur_ = s; }
+
+    <span class="c">// 查找</span>
+    Action* get(uint64_t h);
+    Action* get(<span class="k">const</span> Str&amp; nm);
+    std::size_t size() <span class="k">const</span> { <span class="k">return</span> byHash_.size(); }
+
+    <span class="c">// 执行：条件全过才执行，随后状态按预测推进</span>
+    <span class="k">bool</span> run(uint64_t h);
+    <span class="k">bool</span> run(<span class="k">const</span> Str&amp; nm);
+
+    <span class="c">// 禁用集</span>
+    <span class="k">void</span> ban  (uint64_t h)       { ban_.insert(h); }
+    <span class="k">void</span> unban(uint64_t h)       { ban_.erase(h);  }
+    <span class="k">bool</span> banned(uint64_t h) <span class="k">const</span> { <span class="k">return</span> ban_.count(h) &gt; <span class="n">0</span>; }
+
+    <span class="c">// 选链（唯一扩展点）与重规划</span>
+    <span class="k">virtual</span> Chain plan(<span class="k">const</span> Vec&amp; goal, <span class="k">int</span> maxDep = <span class="n">8</span>, <span class="k">double</span> eps = <span class="n">1e-6</span>, <span class="k">bool</span> asGraph = <span class="k">false</span>);
+
+    <span class="c">// 重规划 == 换一组禁用，重跑同一次 plan</span>
+    Chain replan(<span class="k">const</span> Vec&amp; goal, uint64_t culprit, <span class="k">int</span> maxDep = <span class="n">8</span>, <span class="k">double</span> eps = <span class="n">1e-6</span>) {
+        ban(culprit);
+        <span class="k">return</span> plan(goal, maxDep, eps);
+    }
+
+<span class="k">private</span>:
+    Vec                            cur_;      <span class="c">// 当前状态（由用户写入）</span>
+    std::unordered_map&lt;uint64_t, Action*&gt; byHash_;   <span class="c">// hash → 动作（零拷贝）</span>
+    std::vector&lt;uint64_t&gt;          order_;    <span class="c">// 声明顺序（结果可复现）</span>
+    std::unordered_set&lt;uint64_t&gt;   ban_;      <span class="c">// 禁用集</span>
+};
+
+<span class="k">inline</span> <span class="k">double</span> dist(<span class="k">const</span> Vec&amp; a, <span class="k">const</span> Vec&amp; b) {
+    <span class="k">double</span> d = <span class="n">0</span>;
+    <span class="k">for</span> (std::size_t i = <span class="n">0</span>; i &lt; a.size() &amp;&amp; i &lt; b.size(); ++i) { <span class="k">double</span> t = a[i] - b[i]; d += t * t; }
+    <span class="k">return</span> d;
+}
+
+} <span class="c">// namespace AS</span>
+</code></pre>
+<p class="cap">代码 3 · 全部类型定义 —— 数一数：<code>Condition</code> / <code>Action</code> / <code>Chain</code> / <code>ASpace</code>，加一个 <code>hashOf</code> 自由函数与一个 <code>dist</code> 自由函数</p>
+
+<h3>5.1 四个成员函数的实现</h3>
+
+<pre><code><span class="c">// ── 登记：自动补 hash；冲突直接抛，绝不静默覆盖 ──────────────────</span>
+<span class="k">inline void</span> ASpace::reg_(Action&amp; a) {
+    <span class="k">if</span> (a.hash == <span class="n">0</span>) a.hash = hashOf(a.type + <span class="n">"/"</span> + a.name);
+    <span class="k">auto</span> r = byHash_.emplace(a.hash, &amp;a);
+    <span class="k">if</span> (!r.second &amp;&amp; r.first-&gt;second != &amp;a)
+        <span class="k">throw</span> std::runtime_error(<span class="n">"ASpace: hash 冲突 -&gt; "</span> + a.type + <span class="n">"/"</span> + a.name);
+    order_.push_back(a.hash);                     <span class="c">// 保持声明顺序</span>
+}
+
+<span class="c">// ── 查找 ────────────────────────────────────────────────────────</span>
+<span class="k">inline</span> Action* ASpace::get(uint64_t h) {
+    <span class="k">auto</span> it = byHash_.find(h);
+    <span class="k">return</span> it == byHash_.end() ? <span class="k">nullptr</span> : it-&gt;second;
+}
+<span class="k">inline</span> Action* ASpace::get(<span class="k">const</span> Str&amp; nm) {          <span class="c">// 线性扫描，n 个动作足够快</span>
+    <span class="k">for</span> (<span class="k">auto</span>&amp; kv : byHash_) <span class="k">if</span> (kv.second-&gt;name == nm) <span class="k">return</span> kv.second;
+    <span class="k">return nullptr</span>;
+}
+
+<span class="c">// ── 执行：条件门 → 执行体 → 状态推进 ────────────────────────────</span>
+<span class="k">inline bool</span> ASpace::run(uint64_t h) {
+    <span class="k">if</span> (ban_.count(h))          <span class="k">return false</span>;   <span class="c">// 已禁用</span>
+    Action* a = get(h);
+    <span class="k">if</span> (!a)                     <span class="k">return false</span>;   <span class="c">// 不存在</span>
+    <span class="k">if</span> (!a-&gt;can(cur_))          <span class="k">return false</span>;   <span class="c">// 条件未全满足</span>
+    a-&gt;exec();                                    <span class="c">// 执行（闭包内捕获一切）</span>
+    cur_ = a-&gt;next(cur_);                         <span class="c">// 状态按预测推进</span>
+    <span class="k">return true</span>;
+}
+<span class="k">inline bool</span> ASpace::run(<span class="k">const</span> Str&amp; nm) {
+    Action* a = get(nm);
+    <span class="k">return</span> a ? run(a-&gt;hash) : <span class="k">false</span>;
+}
+</code></pre>
+<p class="cap">代码 4 · <code>reg_ / get / run</code>。没有第 8 个注入位，也就没有「忘接线就静默失效」的空间</p>
+
+<h3>5.2 <code>plan()</code>：唯一的算法部分，也是唯一可覆写的函数</h3>
+
+<pre><code><span class="k">inline</span> Chain ASpace::plan(<span class="k">const</span> Vec&amp; goal, <span class="k">int</span> maxDep, <span class="k">double</span> eps, <span class="k">bool</span> asGraph) {
+    Chain out;
+
+    <span class="k">struct</span> Node { Vec x; <span class="k">int</span> par; uint64_t h; };
+    std::vector&lt;Node&gt; seen{ { cur_, -<span class="n">1</span>, <span class="n">0</span> } };             <span class="c">// 起点 = 用户给的当前状态</span>
+    <span class="k">if</span> (dist(seen[<span class="n">0</span>].x, goal) &lt;= eps) { out.ok = <span class="k">true</span>; <span class="k">return</span> out; }
+
+    std::vector&lt;<span class="k">int</span>&gt; layer{ <span class="n">0</span> };
+    <span class="k">for</span> (<span class="k">int</span> d = <span class="n">0</span>; d &lt; maxDep &amp;&amp; !layer.empty(); ++d) {
+        std::vector&lt;<span class="k">int</span>&gt; next;
+
+        <span class="k">for</span> (<span class="k">int</span> i : layer)
+        <span class="k">for</span> (uint64_t h : order_) {
+            <span class="k">if</span> (ban_.count(h))              <span class="k">continue</span>;      <span class="c">// ① 禁用集</span>
+            Action* a = byHash_.at(h);
+            <span class="k">if</span> (!a-&gt;can(seen[i].x))        <span class="k">continue</span>;      <span class="c">// ② 条件不满足 → 不成边</span>
+            Vec nx = a-&gt;next(seen[i].x);                    <span class="c">// ③ 预测下一步</span>
+
+            <span class="k">bool</span> dup = <span class="k">false</span>;
+            <span class="k">for</span> (<span class="k">const</span> Node&amp; n : seen) <span class="k">if</span> (dist(n.x, nx) &lt;= eps) { dup = <span class="k">true</span>; <span class="k">break</span>; }
+            <span class="k">if</span> (dup) <span class="k">continue</span>;                              <span class="c">// ④ 去重</span>
+
+            seen.push_back({ nx, i, h });
+            <span class="k">int</span> k = (<span class="k">int</span>)seen.size() - <span class="n">1</span>;
+
+            <span class="k">if</span> (dist(nx, goal) &lt;= eps) {                    <span class="c">// ⑤ 命中 → 回溯成链</span>
+                std::vector&lt;uint64_t&gt; r;
+                <span class="k">for</span> (<span class="k">int</span> p = k; p &gt; <span class="n">0</span>; p = seen[p].par) r.push_back(seen[p].h);
+                out.acts.assign(r.rbegin(), r.rend());
+                out.ok = <span class="k">true</span>;
+                <span class="k">return</span> out;
+            }
+            next.push_back(k);
+        }
+        layer = next;
+    }
+
+    <span class="k">if</span> (asGraph) {                                        <span class="c">// 没命中也要交付「图」</span>
+        <span class="k">for</span> (std::size_t i = <span class="n">0</span>; i &lt; seen.size(); ++i)
+            <span class="k">if</span> (seen[i].par &gt;= <span class="n">0</span>) out.edges.push_back({ seen[i].par, (<span class="k">int</span>)i });
+    }
+    out.why = <span class="n">"unreachable within depth "</span> + std::to_string(maxDep);
+    <span class="k">return</span> out;
+}
+</code></pre>
+<p class="cap">代码 5 · <code>plan()</code> 的五个关键行已标号，与 1.html 的 01 / 02 帧一一对应</p>
+
+<h3>5.3 调用的完整闭环（对应 1.html 的 03 → 08）</h3>
+
+<pre><code>Vec goal{ <span class="n">4.0</span>, <span class="n">2.0</span> };
+sp.cur({ <span class="n">0.0</span>, <span class="n">0.0</span> });
+
+<span class="k">for</span> (<span class="k">int</span> round = <span class="n">0</span>; round &lt; <span class="n">8</span>; ++round) {
+
+    Chain ch = sp.plan(goal, <span class="n">8</span>, <span class="n">1e-6</span>, <span class="k">true</span>);          <span class="c">// 01 / 02</span>
+    <span class="k">if</span> (!ch.ok) <span class="k">break</span>;                                <span class="c">// 不可达 → 交给上层</span>
+
+    <span class="k">bool</span> broken = <span class="k">false</span>;
+
+    <span class="k">for</span> (uint64_t h : ch.acts) {                        <span class="c">// 03 逐步执行</span>
+        Action* a    = sp.get(h);
+        Vec     pred = a-&gt;next(sp.cur());                 <span class="c">// 事先算出的预测值</span>
+
+        <span class="k">if</span> (!sp.run(h)) { sp.ban(h); broken = <span class="k">true</span>; <span class="k">break</span>; }   <span class="c">// 条件不过 → 封锁</span>
+
+        Vec real = sense();                               <span class="c">// 实测（用户自己接）</span>
+        <span class="k">if</span> (dist(real, pred) &gt; <span class="n">1e-6</span>) {                   <span class="c">// 04 状态异常</span>
+            sp.ban(h);                                    <span class="c">// 05 封锁肇事动作</span>
+            sp.cur(real);                                 <span class="c">// 以实测为准</span>
+            broken = <span class="k">true</span>;
+            <span class="k">break</span>;                                        <span class="c">// 06 / 07 回到循环开头重新 plan</span>
+        }
+        sp.cur(real);                                     <span class="c">// 校验通过，对齐实测</span>
+    }
+
+    <span class="k">if</span> (!broken) <span class="k">break</span>;                               <span class="c">// 08 到达目标</span>
+}
+</code></pre>
+<p class="cap">代码 6 · 整个闭环 17 行。<b>注意：全程没有修改过任何已有的图或链</b>——只是重复「搜索 → 执行 → 校验」</p>
+
+<!-- ================================================================ -->
+<h2 id="s6">6 · 三档用法</h2>
+
+<p>三档仍然是<b>包含关系</b>，但这次不是靠「填不填字段」区分，而是靠<b>你用不用得上</b>——
+档 3 的用户甚至不需要知道 <code>nxt</code> 与 <code>plan</code> 存在。</p>
+
+<table>
+  <tr><th style="width:7%">档</th><th style="width:24%">需求</th><th style="width:40%">用到的部分</th><th>不涉及的</th></tr>
+  <tr>
+    <td><b>3</b><br>简易</td>
+    <td>外部闭包捕获变量定义函数，直接运行，结果只返回 ok / false，动作空间退化为动作集合</td>
+    <td><code>Action{ name, type, run }</code> + <code>reg(...)</code> + <code>run(name)</code><br>—— 两个类型（<code>Action</code> / <code>ASpace</code>）</td>
+    <td><code>conditions</code>、<code>nxt</code>、<code>Chain</code>、<code>plan</code>、<code>ban</code>、<code>cur</code></td>
+  </tr>
+  <tr>
+    <td><b>1</b><br>标准</td>
+    <td>定义允许启动条件与结束状态预测；外部据当前与目标状态自动选取动作链或图</td>
+    <td>再加 <code>conditions</code> + <code>nxt</code> + <code>Chain</code> + <code>plan()</code> + <code>cur()</code><br>—— 全部四个类型</td>
+    <td><code>ban</code>、<code>replan</code></td>
+  </tr>
+  <tr>
+    <td><b>2</b><br>高级</td>
+    <td>状态异常的 DAG 重规划</td>
+    <td>再加 <code>ban()</code> + <code>replan()</code> + <code>asGraph</code><br>—— <b>零新增类型</b></td>
+    <td>无</td>
+  </tr>
+</table>
+
+<h3>6.1 档 3 · 简易（动作空间退化为动作集合）</h3>
+
+<pre><code><span class="c">// 外部已有函数</span>
+<span class="k">void</span> resetPlate();  <span class="k">void</span> doubleGain(<span class="k">double</span> g);
+
+<span class="k">struct</span> Set : ASpace {
+    Action reset, dbl;                       <span class="c">// ① 动作直接声明为成员</span>
+
+    Set() {
+        reset.name = <span class="n">"reset"</span>;  reset.type = <span class="n">"cfg"</span>;
+        reset.run  = [&amp;]{ resetPlate(); };      <span class="c">// ② 一行包装外部函数</span>
+
+        <span class="k">double</span> g = <span class="n">2.0</span>;
+        dbl.name = <span class="n">"dbl"</span>;    dbl.type = <span class="n">"cfg"</span>;
+        dbl.run  = [g]{ doubleGain(g); };       <span class="c">//   按值捕获运行时变量</span>
+
+        reg(reset, dbl);                        <span class="c">// ③ 一次收集（唯一一份清单）</span>
+    }
+};
+
+<span class="k">int</span> main() {
+    Set s;
+    <span class="k">bool</span> a = s.run(<span class="n">"reset"</span>);     <span class="c">// true</span>
+    <span class="k">bool</span> b = s.run(<span class="n">"nope"</span>);      <span class="c">// false（不存在）</span>
+}
+</code></pre>
+<p class="cap">档 3 · 两个类型 + 三次赋值 + 一次 <code>reg</code>。没有条件、没有预测、没有搜索</p>
+
+<h3>6.2 档 1 · 标准（条件 + 预测 + 自动选链）</h3>
+
+<pre><code><span class="c">// 外部已有函数</span>
+<span class="k">void</span> moveCam(<span class="k">int</span>, <span class="k">int</span>);
+Vec  sense();                                    <span class="c">// 实测状态（用户自己接）</span>
+
+<span class="k">struct</span> Nav : ASpace {
+    Action R, U, D, J;
+
+    Nav() {
+        R.name=<span class="n">"R"</span>; R.type=<span class="n">"move"</span>;
+        R.run = [&amp;]{ moveCam(+<span class="n">1</span>, <span class="n">0</span>); };
+        R.nxt = [](<span class="k">const</span> Vec&amp; x){ <span class="k">auto</span> y=x; y[<span class="n">0</span>]+=<span class="n">1</span>;       <span class="k">return</span> y; };
+
+        U.name=<span class="n">"U"</span>; U.type=<span class="n">"move"</span>;
+        U.run = [&amp;]{ moveCam(<span class="n">0</span>, +<span class="n">1</span>); };
+        U.nxt = [](<span class="k">const</span> Vec&amp; x){ <span class="k">auto</span> y=x; y[<span class="n">1</span>]+=<span class="n">1</span>;       <span class="k">return</span> y; };
+
+        D.name=<span class="n">"D"</span>; D.type=<span class="n">"move"</span>;
+        D.run = [&amp;]{ moveCam(+<span class="n">1</span>, +<span class="n">1</span>); };
+        D.nxt = [](<span class="k">const</span> Vec&amp; x){ <span class="k">auto</span> y=x; y[<span class="n">0</span>]+=<span class="n">1</span>; y[<span class="n">1</span>]+=<span class="n">1</span>; <span class="k">return</span> y; };
+
+        J.name=<span class="n">"J"</span>; J.type=<span class="n">"move"</span>;
+        J.run = [&amp;]{ moveCam(+<span class="n">2</span>, <span class="n">0</span>); };
+        J.nxt = [](<span class="k">const</span> Vec&amp; x){ <span class="k">auto</span> y=x; y[<span class="n">0</span>]+=<span class="n">2</span>;       <span class="k">return</span> y; };
+
+        <span class="c">// 条件向量：与「系统状态」结合，决定这一步能否走</span>
+        D.conditions = { { <span class="n">"x &lt;= 3"</span>, [](<span class="k">const</span> Vec&amp; x){ <span class="k">return</span> x[<span class="n">0</span>] &lt;= <span class="n">3.0</span>; } } };
+        J.conditions = { { <span class="n">"y &gt;= 1"</span>, [](<span class="k">const</span> Vec&amp; x){ <span class="k">return</span> x[<span class="n">1</span>] &gt;= <span class="n">1.0</span>; } } };
+
+        reg(R, U, D, J);
+    }
+};
+
+<span class="k">int</span> main() {
+    Nav sp;
+    sp.cur({ <span class="n">0.0</span>, <span class="n">0.0</span> });                       <span class="c">// 当前状态</span>
+
+    Chain ch = sp.plan({ <span class="n">4.0</span>, <span class="n">2.0</span> }, <span class="n">8</span>, <span class="n">1e-6</span>, <span class="k">true</span>);
+    <span class="c">// ch.ok  = true</span>
+    <span class="c">// ch.acts= { hash("move/D"), hash("move/D"), hash("move/J") }   ← 这就是「链」</span>
+    <span class="c">// ch.edges 非空（asGraph=true）                                  ← 这就是「图」</span>
+
+    <span class="k">for</span> (uint64_t h : ch.acts) sp.run(h);          <span class="c">// 顺序执行，逐步反馈</span>
+}
+</code></pre>
+<p class="cap">档 1 · 每个动作三行（run / nxt / 可选 conditions）+ 一行 <code>reg</code>。<b>没有任何状态空间类型出现</b></p>
+
+<h3>6.3 档 2 · 高级（状态异常的 DAG 重规划）</h3>
+
+<p>「状态异常」的定义这次落在一个可以被直接读出来的地方：<b>事先用 <code>nxt</code> 算出的预测值，与执行后的实测值之间的偏差</b>。</p>
+
+<pre><code><span class="c">// 闭环：搜索 → 执行 → 校验 → （异常就）封锁 → 重新搜索</span>
+Vec goal{ <span class="n">4.0</span>, <span class="n">2.0</span> };
+
+<span class="k">for</span> (<span class="k">int</span> round = <span class="n">0</span>; round &lt; <span class="n">8</span>; ++round) {
+    Chain ch = sp.plan(goal, <span class="n">8</span>, <span class="n">1e-6</span>, <span class="k">true</span>);
+    <span class="k">if</span> (!ch.ok) <span class="k">break</span>;
+
+    <span class="k">bool</span> broken = <span class="k">false</span>;
+    <span class="k">for</span> (uint64_t h : ch.acts) {
+        Action* a    = sp.get(h);
+        Vec     pred = a-&gt;next(sp.cur());                     <span class="c">// 预测</span>
+
+        <span class="k">if</span> (!sp.run(h)) { sp.ban(h); broken=<span class="k">true</span>; <span class="k">break</span>; }  <span class="c">// 条件不过 → 封锁</span>
+
+        Vec real = sense();                                   <span class="c">// 实测</span>
+        <span class="k">if</span> (dist(real, pred) &gt; <span class="n">1e-6</span>) {                   <span class="c">// 状态异常</span>
+            sp.ban(h);                                        <span class="c">// 封锁肇事动作</span>
+            sp.cur(real);                                     <span class="c">// 以实测为准</span>
+            broken = <span class="k">true</span>;  <span class="k">break</span>;                        <span class="c">// 回去重新 plan</span>
+        }
+        sp.cur(real);
+    }
+    <span class="k">if</span> (!broken) <span class="k">break</span>;
+}
+</code></pre>
+
+<div class="box">
+  <div class="t">四条异常路径，逐条对上</div>
+  <table style="margin:8px 0 0">
+    <tr><th style="width:32%">异常</th><th style="width:38%">被哪一行捕捉</th><th>响应</th></tr>
+    <tr><td>条件当时不满足</td><td><code>plan()</code> 里 <code>a-&gt;can()</code> 为假 → 边不生成；执行期 <code>run()</code> 返回 <code>false</code></td><td>搜索绕开 / <code>ban</code> + 重规划</td></tr>
+    <tr><td>实测 ≠ 预测（模型不准）</td><td><code>dist(real, pred) &gt; eps</code></td><td><code>ban</code> + 重规划</td></tr>
+    <tr><td>动作不存在</td><td><code>get()</code> 返回 <code>nullptr</code> → <code>run()</code> 返回 <code>false</code></td><td>调用方修正输入</td></tr>
+    <tr><td>所有路都不通</td><td><code>!ch.ok</code>（<code>ch.why = "unreachable within depth N"</code>）</td><td>返回原因，上层决定降级或放弃</td></tr>
+  </table>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s7">7 · 交互演示：对齐 1.html 的 9 帧</h2>
+
+<p>下面这个演示把上面全部代码在二维状态平面上跑一遍。<b>每切换一帧，右下角会同步显示这一帧对应的 C++ 代码</b>——
+你可以把「画面上的动作」与「代码里的哪一行」直接对上。点击进度点可跳转，键盘 <code>←</code> <code>→</code> 也可翻页。</p>
+
+<div class="stage">
+  <section class="board-wrap">
+    <svg id="board" viewBox="0 0 680 452" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="a-gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#dce3ea"/></marker>
+        <marker id="a-blue" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#0969da"/></marker>
+        <marker id="a-purple" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#8250df"/></marker>
+        <marker id="a-red" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#cf222e"/></marker>
+        <marker id="a-green" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#1a7f37"/></marker>
+      </defs>
+      <g id="layer"></g>
+    </svg>
+    <div class="badge" id="badge"></div>
+    <div class="board-legend">
+      <span><i class="lg cur"></i>当前状态</span>
+      <span><i class="lg pred"></i>预测状态</span>
+      <span><i class="lg act"></i>实测状态</span>
+      <span><i class="lg chain"></i>已走过的路径</span>
+      <span><i class="lg search"></i>搜索过的状态</span>
+      <span><i class="lg goal"></i>目标状态</span>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="step-tag" id="tag">00 · 概览</div>
+    <h3 id="title">状态空间与动作集</h3>
+    <p class="desc" id="desc"></p>
+
+    <div class="vectors">
+      <div class="vec">
+        <label>当前状态 sp.cur()</label>
+        <div class="val" id="vcur">[0.00, 0.00]</div>
+      </div>
+      <div class="vec goal">
+        <label>目标状态 goal</label>
+        <div class="val" id="vgoal">[4.00, 2.00]</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sh">Chain::acts</div>
+      <div class="chain" id="chain"></div>
+    </div>
+
+    <div class="sec" style="margin-bottom:0">
+      <div class="sh">Action 容器</div>
+      <div class="acts" id="acts"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="controls">
+  <button id="prev">← 上一步</button>
+  <div class="steps" id="steps"></div>
+  <button id="next">下一步 →</button>
+  <button id="play" class="primary">▶ 自动播放</button>
+</div>
+
+<div id="code"></div>
+<p class="cap">演示为纯展示：状态向量以二维平面示意，实际实现中长度为任意维；机制对应 <code>plan()</code> / <code>run()</code> / <code>ban()</code> / <code>replan()</code></p>
+
+<script>
+/* ============ 坐标映射 ============ */
+const CELL = 88, OX = 70, OY = 380;
+const X = v => OX + v * CELL;
+const Y = v => OY - v * CELL;
+const NS = 'http://www.w3.org/2000/svg';
+
+/* ============ 动作定义（= Action 容器内容）============ */
+const ACTIONS = {
+  R: { nm:'R  右移', dl:'nxt: (+1, 0)',    cd:'conditions: 无',        },
+  U: { nm:'U  上移', dl:'nxt: (0, +1)',    cd:'conditions: 无',        },
+  D: { nm:'D  斜进', dl:'nxt: (+1, +1)',   cd:'conditions: x <= 3',    },
+  J: { nm:'J  长跳', dl:'nxt: (+2, 0)',    cd:'conditions: y >= 1',    }
+};
+const ACT_ORDER = ['R','U','D','J'];
+const STATUS_TEXT = { pending:'待执行', done:'通过', fail:'异常' };
+
+/* ============ 场景数据（与 1.html 一致）============ */
+const N = (x,y,kind)=>({x,y,kind});
+const E = (ax,ay,bx,by,kind)=>({a:[ax,ay],b:[bx,by],kind});
+
+const C_OPEN   = 'Action R, U, D, J;              // 动作就是成员结构体\n';
+const C_REG    = 'reg(R, U, D, J);                // 一次收集';
+
+const scenes = [
+
+{ tag:'00 · 概览', title:'状态空间与动作集',
+  desc:'动作空间只认识一个中性数值向量——这里就是平面上的 (x, y)。当前状态 (0,0)、目标状态 (4,2)。四个动作各自声明自己的 nxt（预测转移）与 conditions（允许启动条件）。',
+  cur:[0,0], goal:[4,2],
+  nodes:[N(0,0,'current')], edges:[],
+  banned:[], chain:[], chainStatus:[], badge:null,
+  code: C_OPEN + '\n' +
+        'R.run  = [&]{ moveCam(+1, 0); };\n' +
+        'R.nxt  = [](const Vec& x){ auto y = x; y[0] += 1; return y; };\n\n' +
+        'D.name = "D"; D.type = "move";\n' +
+        'D.conditions = { { "x <= 3",\n' +
+        '    [](const Vec& x){ return x[0] <= 3.0; } } };\n\n' +
+        'J.conditions = { { "y >= 1",\n' +
+        '    [](const Vec& x){ return x[1] >= 1.0; } } };\n\n' + C_REG
+},
+
+{ tag:'01 · 前向推演', title:'plan() 逐层展开搜索',
+  desc:'从当前状态出发逐层向外扩展。每个候选动作先过 conditions（不满足则这条边根本不生成），再用 nxt 推演出下一步状态。搜索在第 3 层命中目标。',
+  cur:[0,0], goal:[4,2],
+  nodes:[N(0,0,'current'),
+    N(1,0,'search'),N(0,1,'search'),N(1,1,'search'),
+    N(2,0,'search'),N(2,1,'search'),N(0,2,'search'),N(1,2,'search'),N(2,2,'search'),N(3,1,'search'),
+    N(3,0,'search'),N(3,2,'search'),N(4,1,'search'),N(0,3,'search'),N(1,3,'search'),N(2,3,'search'),N(3,3,'search')],
+  edges:[
+    E(0,0,1,0,'search'),E(0,0,0,1,'search'),E(0,0,1,1,'search'),
+    E(1,0,2,0,'search'),E(1,0,2,1,'search'),
+    E(0,1,0,2,'search'),E(0,1,1,2,'search'),
+    E(1,1,2,2,'search'),E(1,1,3,1,'search'),
+    E(2,0,3,0,'search'),
+    E(2,1,3,2,'search'),E(2,1,4,1,'search'),
+    E(0,2,0,3,'search'),E(0,2,1,3,'search'),
+    E(1,2,2,3,'search'),E(2,2,3,3,'search'),E(2,2,4,2,'search')],
+  banned:[], chain:[], chainStatus:[],
+  badge:{ text:'展开 17 个状态节点 · 命中目标', type:'info' },
+  code: '// plan() 内层：对每个动作做「条件 → 预测」\n' +
+        'for (uint64_t h : order_) {\n' +
+        '    if (ban_.count(h))         continue;   // ① 禁用集\n' +
+        '    if (!a->can(seen[i].x))    continue;   // ② 条件不满足 → 不成边\n' +
+        '    Vec nx = a->next(seen[i].x);           // ③ 用 nxt 预测下一步\n' +
+        '    if (dup)                   continue;   // ④ 去重\n' +
+        '    seen.push_back({ nx, i, h });\n' +
+        '}'
+},
+
+{ tag:'02 · 选链', title:'命中目标，回溯成链',
+  desc:'搜索命中 (4,2) 后沿父指针回溯，得到动作序列 D → D → J。Chain 同时携带 ok/why，因此「不可达」与「已到达」能被区分开——两者都会得到空序列。',
+  cur:[0,0], goal:[4,2],
+  nodes:[N(0,0,'current'),N(1,1,'chain'),N(2,2,'chain')],
+  edges:[E(0,0,1,1,'chain'),E(1,1,2,2,'chain'),E(2,2,4,2,'chain')],
+  banned:[], chain:['D','D','J'], chainStatus:['pending','pending','pending'],
+  badge:{ text:'链长 3 · 预计 3 步到达', type:'ok' },
+  code: 'if (dist(nx, goal) <= eps) {               // ⑤ 命中 → 回溯\n' +
+        '    std::vector<uint64_t> r;\n' +
+        '    for (int p = k; p > 0; p = seen[p].par)\n' +
+        '        r.push_back(seen[p].h);\n' +
+        '    out.acts.assign(r.rbegin(), r.rend());\n' +
+        '    out.ok = true;\n' +
+        '    return out;\n' +
+        '}\n' +
+        '// out.acts = { hash("move/D"), hash("move/D"), hash("move/J") }'
+},
+
+{ tag:'03 · 执行', title:'第 1 步 · D —— 校验通过',
+  desc:'从 (0,0) 执行 D。执行前先用 nxt 算出预测状态 (1,1)，执行后实测也是 (1,1)，偏差为 0，远小于 eps。继续沿链执行下一步。',
+  cur:[1,1], goal:[4,2],
+  nodes:[N(0,0,'start'),N(1,1,'current'),N(2,2,'chain')],
+  edges:[E(0,0,1,1,'ok'),E(1,1,2,2,'chain'),E(2,2,4,2,'chain')],
+  banned:[], chain:['D','D','J'], chainStatus:['done','pending','pending'],
+  badge:{ text:'✓ 预测 = 实测', type:'ok' },
+  code: 'for (uint64_t h : ch.acts) {\n' +
+        '    Action* a    = sp.get(h);\n' +
+        '    Vec     pred = a->next(sp.cur());   // 事先算出的预测\n\n' +
+        '    sp.run(h);                          // 条件门 + 执行体\n' +
+        '    Vec real = sense();                 // 实测\n\n' +
+        '    // dist(real, pred) == 0  → 校验通过\n' +
+        '    sp.cur(real);\n' +
+        '}'
+},
+
+{ tag:'04 · 异常', title:'第 2 步 · D —— 状态异常',
+  desc:'从 (1,1) 执行 D。预测状态是 (2,2)，但实测停在 (2,1)。偏差 1.0 远超容差，判定为状态异常，链上后续步骤全部失效。',
+  cur:[2,1], goal:[4,2],
+  nodes:[N(0,0,'start'),N(1,1,'start'),N(2,2,'predicted'),N(2,1,'current')],
+  edges:[E(0,0,1,1,'ok'),E(1,1,2,2,'pred'),E(1,1,2,1,'actual')],
+  banned:[], chain:['D','D','J'], chainStatus:['done','fail','pending'],
+  badge:{ text:'✗ 偏差 1.00 > eps', type:'fail' },
+  code: 'Vec pred = a->next(sp.cur());        // 预测 (2, 2)\n' +
+        'sp.run(h);\n' +
+        'Vec real = sense();                  // 实测 (2, 1)\n\n' +
+        'if (dist(real, pred) > 1e-6) {       // 1.00 > eps → 异常\n' +
+        '    sp.ban(h);                       // 封锁肇事动作\n' +
+        '    sp.cur(real);                    // 以实测为准\n' +
+        '    break;                           // 回到外层，重新 plan\n' +
+        '}'
+},
+
+{ tag:'05 · 封锁', title:'把肇事动作移出可行集',
+  desc:'异常溯源到 D 这个动作。把它加入禁用集，本轮不再被搜索选中。原有链上剩余的 J 因为起点已偏离，也不再可达。',
+  cur:[2,1], goal:[4,2],
+  nodes:[N(0,0,'start'),N(1,1,'start'),N(2,1,'current')],
+  edges:[E(0,0,1,1,'ok'),E(1,1,2,1,'actual')],
+  banned:['D'], chain:['D','D','J'], chainStatus:['done','fail','void'],
+  badge:{ text:'禁用集：{ D }', type:'warn' },
+  code: 'void ban(uint64_t h) { ban_.insert(h); }   // 就这一行\n\n' +
+        '// 「重规划」不是一种新机制：\n' +
+        '// 它等于「换一组禁用约束，重跑同一次 plan」'
+},
+
+{ tag:'06 · 重规划', title:'换约束重新搜索',
+  desc:'以实测状态 (2,1) 为新起点，禁用集生效后重新展开。D 不再生成任何边，搜索绕开它，在 2 层内找到了新的通路。',
+  cur:[2,1], goal:[4,2],
+  nodes:[N(2,1,'current'),N(3,1,'search'),N(2,2,'search'),N(4,1,'search'),
+         N(3,2,'search'),N(5,1,'search'),N(2,3,'search')],
+  edges:[E(2,1,3,1,'search'),E(2,1,2,2,'search'),E(2,1,4,1,'search'),
+         E(3,1,3,2,'search'),E(3,1,5,1,'search'),
+         E(2,2,2,3,'search'),E(2,2,4,2,'search')],
+  banned:['D'], chain:[], chainStatus:[],
+  badge:{ text:'新链：U → J', type:'ok' },
+  code: 'Chain replan(const Vec& goal, uint64_t culprit) {\n' +
+        '    ban(culprit);                    // 换一组禁用\n' +
+        '    return plan(goal, 8, 1e-6, true); // 重跑同一次搜索\n' +
+        '}\n\n' +
+        '// 只改「约束」，不改「图」——旧的失败记录完整保留'
+},
+
+{ tag:'07 · 新链', title:'新链：U → J',
+  desc:'重新搜索命中目标，得到一条完全绕开 D 的新链。注意：只做了一次重新搜索，没有修改任何已有的图结构。',
+  cur:[2,1], goal:[4,2],
+  nodes:[N(2,1,'current'),N(2,2,'chain')],
+  edges:[E(2,1,2,2,'chain'),E(2,2,4,2,'chain')],
+  banned:['D'], chain:['U','J'], chainStatus:['pending','pending'],
+  badge:{ text:'链长 2 · 已避开禁用动作', type:'ok' },
+  code: '// plan() 内层第 ① 行：被禁用的动作一条边都生成不了\n' +
+        'if (ban_.count(h)) continue;\n\n' +
+        '// → 新链 out.acts = { hash("move/U"), hash("move/J") }\n' +
+        '// 全程 0 次「改图」，只有 搜索 → 执行 → 校验'
+},
+
+{ tag:'08 · 完成', title:'到达目标状态',
+  desc:'两步全部通过校验：预测与实测一致。最终状态 (4,2) 与目标完全吻合，闭环结束。整个过程中没有修改任何已有结构，只是反复执行「搜索 → 执行 → 校验」。',
+  cur:[4,2], goal:[4,2],
+  nodes:[N(2,1,'start'),N(2,2,'chain')],
+  edges:[E(2,1,2,2,'ok'),E(2,2,4,2,'ok')],
+  banned:['D'], chain:['U','J'], chainStatus:['done','done'],
+  badge:{ text:'✓ 已到达目标 (4, 2)', type:'ok' },
+  code: 'if (!broken) break;    // 到达目标\n\n' +
+        '// 动作层全部机制加起来：\n' +
+        '//   gridded BFS(plan) + 条件门(can) + 预测(nxt)\n' +
+        '//   + 禁用集(ban) + 状态对齐(cur)\n' +
+        '// 4 个类型 / 0 个宏 / 约 120 行'
+}
+
+];
+
+/* ============ SVG 工具 ============ */
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const KIND_ORDER = { search:0, chain:1, start:2, goal:3, predicted:4, current:5, actual:6 };
+
+function drawGrid(g){
+  for (let i=0;i<=6;i++)
+    el('line',{x1:X(i),y1:Y(0),x2:X(i),y2:Y(4),stroke:'#f0f3f6','stroke-width':1},g);
+  for (let j=0;j<=4;j++)
+    el('line',{x1:X(0),y1:Y(j),x2:X(6),y2:Y(j),stroke:'#f0f3f6','stroke-width':1},g);
+  el('line',{x1:X(0)-14,y1:Y(0),x2:X(6)+34,y2:Y(0),stroke:'#d0d7de','stroke-width':1.4},g);
+  el('line',{x1:X(0),y1:Y(0)+14,x2:X(0),y2:Y(4)-26,stroke:'#d0d7de','stroke-width':1.4},g);
+  for (let i=0;i<=6;i++)
+    el('text',{x:X(i),y:Y(0)+22,'text-anchor':'middle','font-size':11,
+               fill:'#b0b8c0','font-family':'monospace'},g).textContent = i;
+  for (let j=1;j<=4;j++)
+    el('text',{x:X(0)-18,y:Y(j)+4,'text-anchor':'middle','font-size':11,
+               fill:'#b0b8c0','font-family':'monospace'},g).textContent = j;
+  el('text',{x:X(6)+42,y:Y(0)+4,'font-size':12,fill:'#8c959f'},g).textContent = 'x';
+  el('text',{x:X(0)-18,y:Y(4)-24,'text-anchor':'middle','font-size':12,fill:'#8c959f'},g).textContent = 'y';
+}
+
+const EDGE_STYLE = {
+  search:{stroke:'#dce3ea',w:1.6,dash:'none',marker:'a-gray',  pad:14},
+  chain: {stroke:'#0969da',w:3,  dash:'none',marker:'a-blue',  pad:16},
+  ok:    {stroke:'#1a7f37',w:3,  dash:'none',marker:'a-green', pad:16},
+  pred:  {stroke:'#8250df',w:2.2,dash:'7 5', marker:'a-purple',pad:20},
+  actual:{stroke:'#cf222e',w:2.6,dash:'none',marker:'a-red',   pad:16}
+};
+
+function drawEdge(g,e){
+  const ax=X(e.a[0]), ay=Y(e.a[1]), bx=X(e.b[0]), by=Y(e.b[1]);
+  const dx=bx-ax, dy=by-ay, len=Math.hypot(dx,dy)||1, ux=dx/len, uy=dy/len;
+  const s = EDGE_STYLE[e.kind] || EDGE_STYLE.search;
+  el('line',{x1:ax+ux*s.pad, y1:ay+uy*s.pad, x2:bx-ux*(s.pad+4), y2:by-uy*(s.pad+4),
+    stroke:s.stroke,'stroke-width':s.w,'stroke-dasharray':s.dash,
+    'stroke-linecap':'round','marker-end':'url(#'+s.marker+')'}, g);
+}
+
+function drawNode(g,n){
+  const cx=X(n.x), cy=Y(n.y), k=n.kind;
+  if (k==='search'){ el('circle',{cx,cy,r:5,fill:'#dce3ea'},g); return; }
+  if (k==='chain'){
+    el('circle',{cx,cy,r:13,fill:'rgba(9,105,218,.10)'},g);
+    el('circle',{cx,cy,r:8.5,fill:'#0969da'},g);
+    el('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':10,
+      fill:'#ffffff','font-weight':700,'font-family':'monospace'},g)
+      .textContent = '('+n.x+','+n.y+')';
+    return;
+  }
+  if (k==='start'){
+    el('circle',{cx,cy,r:12,fill:'#ffffff',stroke:'#1a7f37','stroke-width':2.4,opacity:.75},g);
+    el('circle',{cx,cy,r:4,fill:'#1a7f37',opacity:.75},g);
+    return;
+  }
+  if (k==='goal'){
+    el('rect',{x:cx-11,y:cy-11,width:22,height:22,rx:4,fill:'#fffbeb',stroke:'#9a6700',
+      'stroke-width':2.4,transform:'rotate(45 '+cx+' '+cy+')'},g);
+    el('circle',{cx,cy,r:3.5,fill:'#9a6700'},g);
+    el('text',{x:cx,y:cy+32,'text-anchor':'middle','font-size':11,
+      fill:'#9a6700','font-weight':700},g).textContent = '目标';
+    return;
+  }
+  if (k==='predicted'){
+    el('circle',{cx,cy,r:13,fill:'#f6f2ff',stroke:'#8250df','stroke-width':2.2,
+      'stroke-dasharray':'5 4'},g);
+    el('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':9.5,
+      fill:'#8250df','font-weight':700,'font-family':'monospace'},g)
+      .textContent = '('+n.x+','+n.y+')';
+    el('text',{x:cx,y:cy-20,'text-anchor':'middle','font-size':10.5,
+      fill:'#8250df','font-weight':700},g).textContent = '预测';
+    return;
+  }
+  if (k==='current' || k==='actual'){
+    const col = (k==='actual') ? '#cf222e' : '#0969da';
+    const ring = el('circle',{cx,cy,r:14,fill:'none',stroke:col,'stroke-width':2,opacity:.5},g);
+    el('animate',{attributeName:'r',values:'14;30',dur:'2s',repeatCount:'indefinite'},ring);
+    el('animate',{attributeName:'opacity',values:'.45;0',dur:'2s',repeatCount:'indefinite'},ring);
+    el('circle',{cx,cy,r:11,fill:col,stroke:'#ffffff','stroke-width':2.5},g);
+    el('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':10,
+      fill:'#ffffff','font-weight':700,'font-family':'monospace'},g)
+      .textContent = '('+n.x+','+n.y+')';
+  }
+}
+
+/* ============ 渲染 ============ */
+const layer = document.getElementById('layer');
+const badge = document.getElementById('badge');
+let current = 0;
+
+function render(){
+  const sc = scenes[current];
+  layer.innerHTML = '';
+  drawGrid(layer);
+
+  const atStart = (sc.cur[0]===0 && sc.cur[1]===0);
+  if (!atStart){
+    el('circle',{cx:X(0),cy:Y(0),r:12,fill:'#ffffff',stroke:'#b6e0c4','stroke-width':2,opacity:.85}, layer);
+    el('circle',{cx:X(0),cy:Y(0),r:3.5,fill:'#b6e0c4'}, layer);
+  }
+
+  (sc.edges||[]).forEach(e => drawEdge(layer,e));
+
+  const nodes = (sc.nodes||[]).slice().sort(
+    (a,b)=>(KIND_ORDER[a.kind]??9)-(KIND_ORDER[b.kind]??9));
+  nodes.forEach(n => drawNode(layer,n));
+
+  if (sc.goal && !nodes.some(n=>n.x===sc.goal[0]&&n.y===sc.goal[1]))
+    drawNode(layer,{x:sc.goal[0],y:sc.goal[1],kind:'goal'});
+
+  if (sc.badge){ badge.className='badge show '+sc.badge.type; badge.textContent=sc.badge.text; }
+  else { badge.className='badge'; }
+
+  updatePanel(sc);
+  updatePips();
+  updateButtons();
+}
+
+function updatePanel(sc){
+  document.getElementById('tag').textContent   = sc.tag;
+  document.getElementById('title').textContent = sc.title;
+  document.getElementById('desc').textContent  = sc.desc;
+  document.getElementById('vcur').textContent  = '['+sc.cur[0].toFixed(2)+', '+sc.cur[1].toFixed(2)+']';
+  document.getElementById('vgoal').textContent = '['+sc.goal[0].toFixed(2)+', '+sc.goal[1].toFixed(2)+']';
+
+  const chainEl = document.getElementById('chain');
+  chainEl.innerHTML = '';
+  if (!sc.chain || sc.chain.length===0){
+    chainEl.innerHTML = '<span class="empty">（尚未生成）</span>';
+  } else {
+    sc.chain.forEach((key,i)=>{
+      const st = (sc.chainStatus && sc.chainStatus[i]) || 'pending';
+      const chip = document.createElement('div');
+      chip.className = 'chip ' + (st==='void' ? 'void' : st);
+      chip.innerHTML = '<span class="idx">'+(i+1)+'</span><span>'+ACTIONS[key].nm+'</span>';
+      chainEl.appendChild(chip);
+      if (i < sc.chain.length-1){
+        const ar = document.createElement('span');
+        ar.className='arrow'; ar.textContent='→';
+        chainEl.appendChild(ar);
+      }
+    });
+  }
+
+  const actsEl = document.getElementById('acts');
+  actsEl.innerHTML = '';
+  ACT_ORDER.forEach(key=>{
+    const a = ACTIONS[key];
+    const banned = (sc.banned||[]).includes(key);
+    const row = document.createElement('div');
+    row.className = 'act-row' + (banned?' banned':'');
+    row.innerHTML = '<span class="nm">'+a.nm+'</span>'+
+                    '<span class="dl">'+a.dl+'</span>'+
+                    '<span class="cd">'+a.cd+(banned?' · 已禁用':'')+'</span>';
+    actsEl.appendChild(row);
+  });
+
+  document.getElementById('code').textContent = sc.code || '';
+}
+
+const stepsEl = document.getElementById('steps');
+function buildPips(){
+  stepsEl.innerHTML = '';
+  scenes.forEach((s,i)=>{
+    const p = document.createElement('div');
+    p.className='pip'; p.title=s.title;
+    p.addEventListener('click', ()=>{ stopPlay(); goto(i); });
+    stepsEl.appendChild(p);
+  });
+}
+function updatePips(){
+  const cs = stepsEl.children;
+  for (let i=0;i<cs.length;i++)
+    cs[i].className = 'pip' + (i===current?' on':(i<current?' past':''));
+}
+
+const btnPrev=document.getElementById('prev');
+const btnNext=document.getElementById('next');
+const btnPlay=document.getElementById('play');
+function updateButtons(){
+  btnPrev.disabled = (current===0);
+  btnNext.disabled = (current===scenes.length-1);
+}
+function goto(i){ current = Math.max(0, Math.min(scenes.length-1, i)); render(); }
+
+btnPrev.addEventListener('click', ()=>{ stopPlay(); goto(current-1); });
+btnNext.addEventListener('click', ()=>{ stopPlay(); goto(current+1); });
+
+let timer=null;
+function startPlay(){
+  if (timer) return;
+  if (current===scenes.length-1) goto(0);
+  btnPlay.textContent='❚❚ 暂停';
+  timer=setInterval(()=>{ if (current>=scenes.length-1){ stopPlay(); return; } goto(current+1); }, 2400);
+}
+function stopPlay(){ if (timer){ clearInterval(timer); timer=null; } btnPlay.textContent='▶ 自动播放'; }
+btnPlay.addEventListener('click', ()=>{ if (timer) stopPlay(); else startPlay(); });
+
+document.addEventListener('keydown', e=>{
+  if (e.key==='ArrowRight'){ stopPlay(); goto(current+1); }
+  if (e.key==='ArrowLeft'){  stopPlay(); goto(current-1); }
+});
+
+buildPips();
+render();
+</script>
+
+<!-- ================================================================ -->
+<h2 id="s8">8 · 与上一版对比 · 落地顺序 · 待清理文件</h2>
+
+<h3>8.1 三代对比</h3>
+
+<table>
+  <tr><th style="width:26%">维度</th><th style="width:24%">旧实现（仓库现存）</th><th style="width:24%">上一版设计</th><th>本版（勿增实体）</th></tr>
+  <tr><td>类型总数</td><td>约 20</td><td>5</td><td><b>4</b></td></tr>
+  <tr><td>宏</td><td>9</td><td>3</td><td><b>0</b></td></tr>
+  <tr><td>头文件</td><td>15</td><td>1</td><td><b>1</b></td></tr>
+  <tr><td>代码量</td><td>约 3600 行</td><td>约 150 行</td><td><b>约 120 行</b></td></tr>
+  <tr><td>动作怎么登记</td><td><code>ACT_REGISTER</code> + 3 份清单</td><td><code>add(name)</code> 后配字段</td><td><b>声明为成员 + 一次 <code>reg(...)</code></b></td></tr>
+  <tr><td>共享上下文</td><td><code>ActionContext</code>（8 个可空注入口）</td><td><code>Ctx</code>（必须重写的纯虚类）</td><td><b>无 —— 由闭包捕获</b></td></tr>
+  <tr><td>执行函数签名</td><td><code>applyTo()</code>，需继承与覆写</td><td><code>Out(Ctx&amp;)</code></td><td><b><code>void()</code> —— 无参闭包，外部函数一行包装</b></td></tr>
+  <tr><td>状态的表示</td><td>状态空间对象</td><td>中性 <code>vector&lt;double&gt;</code>（由 <code>Ctx::cur()</code> 给）</td><td><b>中性 <code>vector&lt;double&gt;</code>（<code>ASpace::cur_</code>）</b></td></tr>
+  <tr><td>异常的判定</td><td>无（执行失败只返回码）</td><td>实测 ≠ 预测</td><td><b>实测 ≠ 预测（同一判据，但依赖字段更少）</b></td></tr>
+  <tr><td>重规划</td><td>改图（<code>prunedSet</code> + Condition 边）</td><td><code>ban</code> + 重跑 <code>plan</code></td><td><b><code>ban</code> + 重跑 <code>plan</code>（<code>replan</code> 只有 3 行）</b></td></tr>
+  <tr><td>扩展点</td><td>8 个注入位 + 三张注册表</td><td>1 个 <code>virtual plan()</code></td><td><b>1 个 <code>virtual plan()</code></b></td></tr>
+</table>
+
+<div class="box good">
+  <div class="t">这一版为什么还能再少</div>
+  <p style="margin:0">上一版之所以需要 <code>Ctx</code>、<code>Out</code>、3 个宏，是因为动作的执行函数被设计成 <code>Out(Ctx&amp;)</code>——
+  框架必须把上下文「递」给动作，于是就必须有一个上下文类型、一个结果类型、以及把 lambda 藏起来的宏。<br>
+  这一版你给的动作执行函数是<b>无参</b>的：
+  <b>动作自己去拿它需要的一切</b>（靠闭包），框架不再需要递任何东西。
+  一个「谁拿、怎么拿」的决定，连带砍掉了 1 个类型、3 个宏、和 8 个注入口 —— 这就是「如非必要，勿增实体」最实在的一次收益。</p>
+</div>
+
+<h3>8.2 落地顺序</h3>
+
+<p>本设计是<b>纯新增</b>：新文件不依赖任何待删文件，所以可以「新旧并存 + 编译验证」推进，不必一次性大爆炸替换。</p>
+
+<table>
+  <tr><th style="width:6%">步</th><th style="width:30%">动作</th><th style="width:34%">验收标准</th><th>风险</th></tr>
+  <tr><td class="ok">1</td><td>新增 <code>include/AuroX/Space/ASpace.hpp</code>（代码 3 + 代码 4 + 代码 5，约 120 行，header-only）</td><td>静态库 <code>AuroX</code> 仍编译通过（新文件不被任何 <code>.cpp</code> 引用，零影响）</td><td>极低：纯新增</td></tr>
+  <tr><td class="ok">2</td><td>写一个 20 行自测（新增 <code>src/Space/ASpaceSelfTest.cpp</code>）</td><td>① 档 3：<code>run</code> 返回 <code>true/false</code> 正确；<br>② 档 1：从 (0,0) <code>plan({4,2})</code> 得到 <code>[D,D,J]</code>，且 <code>J</code> 在 <code>y=0</code> 时<b>不入边</b>；<br>③ 档 2：<code>ban(D)</code> 后从 (2,1) 得到 <code>[U,J]</code></td><td>低。<b>注意</b>：新增 <code>.cpp</code> 后必须重跑 <code>cmake -B build -S .</code>（<code>GLOB</code> 无 <code>CONFIGURE_DEPENDS</code>）</td></tr>
+  <tr><td class="ok">3</td><td>删旧动作层（15 个文件，约 3595 行）并重跑 <code>cmake</code> 配置</td><td>静态库编译通过，动作层只剩新 <code>ASpace.hpp</code></td><td>中：之后无法回头，<b>务必先完成第 2 步</b></td></tr>
+  <tr><td>→</td><td>重写 <code>README_CN.md</code> 第 194–287 行动作空间一节</td><td>文档里出现的每个类型名都能在代码里找到</td><td>低，但不要跳过</td></tr>
+</table>
+
+<h3>8.3 待清理文件（沿用上轮实测结果，<b>未删除任何文件</b>）</h3>
+
+<div class="box bad">
+  <div class="t">顺序警告</div>
+  <p style="margin:0">下表 B 类<b>是本设计要取代的旧动作层</b>。在 <code>ASpace.hpp</code> 写进仓库之前删掉它们，
+  仓库会进入「既编译不了、也没有替代品」的中间状态。<b>先落地新头文件、编译通过，再删。</b>
+  另外 <code>src/</code> 下的 <code>.cpp</code> 被删除后，必须重跑 <code>cmake -B build -S .</code>。</p>
+</div>
+
+<table>
+  <tr><th style="width:9%">类别</th><th style="width:46%">文件</th><th style="width:9%">行数</th><th>处置建议</th></tr>
+  <tr class="cut"><td rowspan="7"><b>A</b><br>可直接删</td>
+    <td><code>include/AuroX/Space/ActionSpaceExample.cpp</code></td><td>569</td><td>放错位置的死文件（CMake 只 glob <code>src/*.cpp</code>），内容是已被推翻的 v1.0 验收脚本</td></tr>
+  <tr class="cut"><td><code>include/AuroX/Space/ActionReplanExample.cpp</code></td><td>681</td><td>同上；演示的「Condition 边 + 改图」正是本设计推翻的路线</td></tr>
+  <tr class="cut"><td><code>include/AuroX/Space/ActionSpace重构方案V2.0.md</code></td><td>810</td><td>从未实施；且它自称取代的 v1.0 已不在仓库里</td></tr>
+  <tr class="cut"><td><code>custom_action_log.csv</code></td><td>3507</td><td>运行产物进了版本库，建议删除并加 <code>.gitignore</code></td></tr>
+  <tr class="cut"><td><code>.vscode/setting.json</code></td><td>19</td><td>文件名拼写错误（缺 s），VS Code 永不读取 → 把内容并入下一行后删除</td></tr>
+  <tr class="cut"><td><code>.vscode/settings.json</code></td><td>3</td><td>只留这一份，把上面那份的 5 条 cmake 配置搬进来</td></tr>
+  <tr class="cut"><td><code>include/AuroX/Evaluation/README_MD.md</code></td><td>63</td><td>命名不规范（Memory 层用 <code>README_CN.md</code>），建议改名或删除</td></tr>
+
+  <tr class="cut"><td rowspan="3"><b>B</b><br>随重构删<br>（勿提前）</td>
+    <td><code>include/AuroX/Space/ActionSpace.hpp</code>(376) + <code>ActionSpace.ipp</code>(39) + <code>src/Space/ActionSpace.cpp</code>(677) + <code>SpaceCommon.hpp</code>(73)</td><td>1165</td>
+    <td rowspan="3">全部收敛进新的 <code>ASpace.hpp</code>（约 120 行）。<br><br>
+    <code>SpaceCommon.hpp</code> 只含 <code>SpaceDiag</code> + 一份 <code>AUROX_API</code> 守卫；<code>ParameterSpace.hpp</code> 自带等价守卫，故删除安全。</td></tr>
+  <tr class="cut"><td><code>include/AuroX/Space/Action/</code> —— 8 个头文件<br><span style="font-size:12px;color:#57606a">Action / ActionValue / DefaultAction / ActionContext / ActionGraph / ActionPlan / ActionRegistry / ActionSelector</span></td><td>1886</td></tr>
+  <tr class="cut"><td><code>src/Space/Action/</code> —— 3 个 cpp<br><span style="font-size:12px;color:#57606a">ActionGraph.cpp / ActionPlan.cpp / ActionSelector.cpp</span></td><td>544</td></tr>
+
+  <tr><td rowspan="3"><b>C</b><br>需修正</td>
+    <td><code>README_CN.md</code> 第 194–287 行（动作空间一节）</td><td>约 94</td><td>必须整节重写为新的 <code>Action</code> / <code>ASpace</code></td></tr>
+  <tr><td><code>README_CN.md</code> 第 301 / 390–391 行</td><td>—</td><td>声称 <code>ObservationSpace.hpp</code> / <code>ObservationEncoder.hpp</code> 是 header-only，但 <code>src/Space/</code> 下真实存在 371 + 108 行的实现 → 文档与代码矛盾。建议顺带给 <code>CMakeLists.txt</code> 的 <code>GLOB_RECURSE</code> 补 <code>CONFIGURE_DEPENDS</code></td></tr>
+  <tr><td>7 个文件共 9 处引用 <code>ActionSpace重构方案.md</code> v1.0</td><td>—</td><td>悬空引用（该文件已不在仓库）；但这 7 个文件全在删除清单内，随删除一起消失</td></tr>
+
+  <tr class="keep"><td><b>D</b><br>勿删但坏</td>
+    <td><code>apps/AuroXServer/main.cpp</code>（401）+ <code>ServerUI/</code>（2948）</td><td>3315</td><td>引用 <code>AuroX::Dynamics::*</code> 与 <code>Optimizer::*</code>，而这两层在仓库里<b>不存在</b> → <code>AuroX_Exe</code> 编译不过。与本设计正交，另行处理</td></tr>
+
+  <tr class="keep"><td><b>E</b><br>明确保留</td>
+    <td><code>ParameterSpace</code> 三文件；<code>StateSpace</code> / <code>ObservationSpace</code> 层；Memory / Evaluation 层；<code>Core.hpp</code>（需修）；<code>CMakeLists.txt</code>（需修）</td><td>—</td><td>本设计<b>唯一依赖</b>是标准库，连 <code>ParameterSpace</code> 都不需要 include —— 闭包可以直接捕获它。因此这些文件本轮一行都不动</td></tr>
+</table>
+
+<div class="kpi">
+  <div><b>7</b><span>A 类可直接删<br>5652 行</span></div>
+  <div><b>15</b><span>B 类随重构删<br>3595 行（勿提前）</span></div>
+  <div><b>4</b><span>本设计类型数<br>（旧 20 / 上版 5）</span></div>
+  <div><b>0</b><span>本设计宏数<br>（旧 9 / 上版 3）</span></div>
+</div>
+
+<div class="box">
+  <div class="t">最后一句：这份设计里「没有」的东西，和「有」的东西一样重要</div>
+  <p style="margin:0">没有注册表、没有工厂、没有序列化、没有选择器、没有效果契约、没有四源绑定、没有三段生命周期、
+  没有 8 个注入口、没有 9 个宏、没有继承体系（除用户自己派生动作空间）、没有参数空间、没有状态空间、没有观测空间。
+  <b>因为 1.html 展示的每一个动作，都不需要它们。</b></p>
+</div>
+
+<footer>
+  <p><b>本文档不修改任何代码。</b>所有源码、示例、配置文件保持原样；第 8.3 节的文件清单仅作建议，处置权在作者。</p>
+  <p>范围：<code>include/AuroX/Space</code> 与 <code>src/Space</code>。设计语言：如非必要，勿增实体。
+  第 7 节演示为纯前端展示，用于说明机制，不参与编译。</p>
+  <p>生成于 2026-09-25 · 待作者审核后执行第 8.2 节的落地步骤。</p>
+</footer>
+
+
+</div>
+</body>
+</html>
