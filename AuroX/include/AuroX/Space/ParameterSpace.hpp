@@ -119,6 +119,10 @@ public:
     virtual bool packDouble(double& out) const;
     virtual bool unpackDouble(double v);
     virtual std::size_t componentCount() const;
+    // P-04: pre-commit validation of a candidate vector component. Returns true
+    // when `v` is a legal value for this parameter (finite, in range / within
+    // the discrete candidate set). Used by unvectorizeDouble() before commit.
+    virtual bool acceptsDouble(double v) const;
 };
 
 // ============================================================================
@@ -189,6 +193,11 @@ public:
     std::unique_ptr<ParameterBase> clone() const override;
     bool isBounded() const override;
     bool isWithinBounds() const override;
+    // P1 (unified write validation): single predicate deciding whether `cand`
+    // is a legal value for this parameter (candidate set, else [lower, upper]).
+    // isWithinBounds(), acceptsDouble() and ParameterSpace::unvectorize<T>()
+    // all funnel through it, so every write entry point shares one rule.
+    bool accepts(const T& cand) const;
     json toJson() const override;
     void fromJson(const json& j) override;
     json valueToJson() const override;
@@ -196,6 +205,7 @@ public:
     bool packDouble(double& out) const override;
     bool unpackDouble(double v) override;
     std::size_t componentCount() const override;
+    bool acceptsDouble(double v) const override;
 };
 
 // ============================================================================
@@ -232,6 +242,7 @@ public:
     bool packDouble(double& out) const override;
     bool unpackDouble(double v) override;
     std::size_t componentCount() const override;
+    bool acceptsDouble(double v) const override;
 };
 
 // ============================================================================
@@ -245,6 +256,7 @@ public:
         ParameterTypeId type;
         std::size_t components;
         bool is_enum = false;
+        std::size_t offset = 0;   // P-06: start index of this parameter inside vec()
     };
 
     // Registration
@@ -337,15 +349,19 @@ public:
     Param& operator=(const T& v);
     Param& operator=(T&& v);
     operator const T&() const;
-    operator T&();
-    T& get();
+    // P-01: no writable reference escapes. Writes must go through operator=()
+    // so raw_ stays in sync; reads use this const accessor.
     const T& get() const;
 
     const std::string& name() const;
     bool isBound() const;
     bool isValid() const;
     bool inBounds() const { return isValid(); }
-    TypedParameter<T>* raw();
+    // P1 (no direct writes to the underlying object): only the const overload
+    // exists. The previous non-const raw() let callers write
+    // TypedParameter<T>::value directly, leaving the mirror `value` stale; the
+    // next sync_to_raw() / space() / vec() then pushed the stale mirror back
+    // over the change. Writes must go through operator=().
     const TypedParameter<T>* raw() const;
 
 protected:
@@ -372,14 +388,15 @@ public:
     EnumParam& operator=(std::string&& v);
     EnumParam& operator=(const char* v);
     operator const std::string&() const;
-    std::string& get();
+    // P-01: no writable reference escapes; use operator=() for controlled writes.
     const std::string& get() const;
 
     const std::string& name() const;
     bool isBound() const;
     bool isValid() const;
     bool inBounds() const { return isValid(); }
-    EnumParameter* raw();
+    // P1: same restriction as Param<T>::raw() - read-only access to the backing
+    // EnumParameter; writes go through operator=() so the mirror stays in sync.
     const EnumParameter* raw() const;
 
 protected:
@@ -424,8 +441,9 @@ public:
     // Short aliases (zero-break)
     std::vector<double> vec() const { return vectorize(); }
     void unvec(const std::vector<double>& v) { unvectorize(v); }
-    // 注：ComponentMeta 是 ParameterSpace 的嵌套类型，PStruct 并不继承它，
-    //     因此这里必须写全限定名（原先的裸 ComponentMeta 无法通过编译）。
+    // Note: ComponentMeta is a nested type of ParameterSpace and PStruct does
+    //       NOT inherit it, so the fully qualified name is required here (the
+    //       bare ComponentMeta would not compile).
     std::vector<ParameterSpace::ComponentMeta> layout() const { return componentLayout(); }
 
     bool validate() const;

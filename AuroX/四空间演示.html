@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AuroX · 四空间演示</title>
+<style>
+  /* ===== light theme, same palette as ASpace重构设计.html ===== */
+  :root{
+    --bg:#ffffff; --bg2:#f6f8fa; --bg3:#eef1f5;
+    --fg:#1f2328; --fg2:#57606a; --fg3:#8c959f;
+    --line:#d0d7de; --line2:#e6eaef;
+    --blue:#0969da; --red:#cf222e; --green:#1a7f37;
+    --amber:#9a6700; --purple:#8250df;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    line-height:1.7; font-size:15px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:34px 24px 80px}
+  header.top{border-bottom:2px solid var(--line); padding-bottom:18px; margin-bottom:20px}
+  header.top h1{font-size:26px; margin:0 0 6px; letter-spacing:.2px}
+  header.top .sub{color:var(--fg2); font-size:13.5px}
+  header.top .meta{margin-top:11px; display:flex; flex-wrap:wrap; gap:7px}
+  .tag{display:inline-block; padding:2px 10px; border-radius:20px; font-size:11.5px;
+       background:var(--bg3); color:var(--fg2); border:1px solid var(--line)}
+  .tag.done{border-color:#b6e0c4; background:#eaf7ee; color:var(--green)}
+  .tag.todo{border-color:#f0dca0; background:#fff8e6; color:var(--amber)}
+
+  /* ===== tabs ===== */
+  .tabs{display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin-bottom:20px}
+  .tab{font:inherit; font-size:13.5px; font-weight:600; padding:9px 16px; cursor:pointer;
+       border:1px solid var(--line); border-bottom:none; border-radius:9px 9px 0 0;
+       background:var(--bg2); color:var(--fg2); position:relative; top:1px; transition:all .15s}
+  .tab:hover{color:var(--fg); background:var(--bg3)}
+  .tab.active{background:var(--bg); color:var(--blue); border-color:var(--line); box-shadow:inset 0 2px 0 var(--blue)}
+  .tab .dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px; vertical-align:1px}
+  .dot.g{background:var(--green)} .dot.a{background:var(--amber)}
+  .pane{display:none} .pane.active{display:block}
+
+  /* ===== layout ===== */
+  .stage{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start}
+  @media (max-width:960px){ .stage{grid-template-columns:1fr} }
+  .card{background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:16px}
+  .card h3{font-size:15.5px; margin:0 0 10px}
+  .panel{background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:15px;
+         position:sticky; top:14px}
+  .sec{margin-bottom:14px}
+  .sec:last-child{margin-bottom:0}
+  .sh{font-size:11px; font-weight:700; letter-spacing:.8px; color:var(--fg3);
+      text-transform:uppercase; margin:0 0 7px; display:flex; justify-content:space-between; align-items:center}
+  .sh .mini{font-weight:500; letter-spacing:0; text-transform:none; font-size:11px; color:var(--fg3)}
+  p{font-size:13.6px}
+  .desc{font-size:12.8px; color:var(--fg2); margin:0 0 13px; line-height:1.68}
+
+  /* ===== table ===== */
+  table{border-collapse:collapse; width:100%; margin:8px 0 12px; font-size:12.8px}
+  th,td{border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:middle}
+  th{background:var(--bg3); font-weight:600; font-size:12px}
+  tr:nth-child(even) td{background:#fbfcfd}
+  td.num{font-family:"Cascadia Mono",Consolas,monospace; text-align:right}
+  td.mono,.mono{font-family:"Cascadia Mono",Consolas,monospace}
+  .pill{display:inline-block; padding:1px 8px; border-radius:20px; font-size:11px; border:1px solid var(--line); background:var(--bg2)}
+  .pill.b{color:var(--blue); border-color:#b6d4f5; background:#eaf2fd}
+  .pill.g{color:var(--green); border-color:#b6e0c4; background:#eaf7ee}
+  .pill.a{color:var(--amber); border-color:#f0dca0; background:#fff8e6}
+  .pill.r{color:var(--red); border-color:#f5b7b3; background:#fdeceb}
+  input[type=text],input[type=number],select{
+    font:inherit; font-size:12.5px; padding:3px 7px; border:1px solid var(--line);
+    border-radius:6px; background:var(--bg); color:var(--fg); width:100%; min-width:0}
+  input[type=number]{font-family:"Cascadia Mono",Consolas,monospace; text-align:right}
+  label.chk{display:inline-flex; align-items:center; gap:6px; font-size:12.3px; color:var(--fg2)}
+
+  /* ===== buttons ===== */
+  .controls{display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap}
+  button{font-family:inherit; font-size:12.6px; font-weight:600; padding:6px 13px;
+         border-radius:8px; border:1px solid var(--line); background:var(--bg);
+         color:var(--fg); cursor:pointer; transition:all .16s}
+  button:hover:not(:disabled){background:var(--bg3); border-color:#b9c2cb}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+  button.primary:hover:not(:disabled){background:#0a5dc2}
+  button.danger{color:var(--red); border-color:#f5b7b3; background:#fffafa}
+  button.danger:hover:not(:disabled){background:#fdeceb}
+  button.ghost{background:var(--bg2)}
+
+  /* ===== output blocks ===== */
+  .vec-out{font-family:"Cascadia Mono",Consolas,monospace; font-size:13px; font-weight:600;
+           color:var(--blue); background:var(--bg); border:1px solid var(--line);
+           border-radius:8px; padding:8px 11px; word-break:break-all}
+  .vec-out.empty{color:var(--fg3); font-weight:500}
+  pre.code{background:var(--bg); border:1px solid var(--line); border-radius:8px;
+           padding:10px 12px; margin:8px 0 0; font-family:"Cascadia Mono",Consolas,monospace;
+           font-size:11.6px; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:#1f2328}
+  pre.code .cm{color:var(--fg3)}
+  pre.code .er{color:var(--red)}
+  pre.code .okc{color:var(--green)}
+  .log{max-height:250px; overflow:auto; background:var(--bg); border:1px solid var(--line);
+       border-radius:8px; padding:8px 10px; font-family:"Cascadia Mono",Consolas,monospace;
+       font-size:11.5px; line-height:1.62}
+  .log div{padding:1px 0; border-bottom:1px dashed var(--line2)}
+  .log div:last-child{border-bottom:none}
+  .log .l-ok{color:var(--green)} .log .l-err{color:var(--red)} .log .l-info{color:var(--fg2)}
+  .log .l-call{color:var(--blue)}
+  .empty{font-size:12.3px; color:var(--fg3); font-style:italic}
+
+  /* ===== action-space board ===== */
+  .board-wrap{background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:8px}
+  #board{display:block; width:100%; height:auto}
+  .legend{display:flex; flex-wrap:wrap; gap:12px; padding:8px 6px 2px; font-size:11.5px; color:var(--fg2)}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .lg{width:12px; height:12px; border-radius:50%; display:inline-block; flex:none}
+  .lg.cur{background:var(--blue); box-shadow:0 0 0 3px rgba(9,105,218,.15)}
+  .lg.goal{background:#fffbeb; border:2px solid var(--amber); transform:rotate(45deg); border-radius:2px}
+  .lg.chain{background:var(--blue); opacity:.5}
+  .lg.search{background:#dce3ea}
+  .lg.pred{border:2px dashed var(--purple); background:transparent}
+  .chain-row{display:flex; flex-wrap:wrap; align-items:center; gap:5px; min-height:30px; margin-top:6px}
+  .chip{display:inline-flex; align-items:center; gap:6px; padding:3px 10px 3px 6px; border-radius:8px;
+        font-size:12.2px; font-weight:600; border:1px solid var(--line); background:var(--bg); color:var(--fg2); transition:all .2s}
+  .chip .idx{display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px;
+             border-radius:5px; background:var(--bg3); color:var(--fg3); font-size:10px; font-weight:700}
+  .chip.done{background:#eaf7ee; border-color:#b6e0c4; color:var(--green)}
+  .chip.done .idx{background:#cdeed7; color:var(--green)}
+  .chip.fail{background:#fdeceb; border-color:#f5b7b3; color:var(--red)}
+  .chip.fail .idx{background:#f8d3d0; color:var(--red)}
+  .arrow{color:var(--fg3); font-size:12px}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:4px 10px; font-size:12.4px}
+  .kv b{font-weight:600; color:var(--fg2)}
+
+  /* ===== misc ===== */
+  .note{border:1px solid var(--line); border-left:4px solid var(--blue); background:var(--bg2);
+        border-radius:6px; padding:11px 15px; margin:14px 0; font-size:13.2px}
+  .note.warn{border-left-color:var(--amber); background:#fffdf5}
+  .note.plan{border-left-color:var(--amber); background:#fffdf5}
+  .note .t{font-weight:700; margin-bottom:4px; font-size:13.6px}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media (max-width:760px){ .two{grid-template-columns:1fr} }
+  footer{margin-top:50px; padding-top:16px; border-top:1px solid var(--line);
+         color:var(--fg3); font-size:12.4px}
+  code{font-family:"Cascadia Mono",Consolas,monospace; font-size:12.4px;
+       background:var(--bg3); padding:1px 5px; border-radius:4px; color:#0a3069}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>AuroX · Space 层四空间演示</h1>
+  <div class="sub">用一个可交互界面把 <code>StateSpace</code> / <code>ParameterSpace</code> / <code>ActionSpace</code> 的行为与边界跑一遍</div>
+  <div class="meta">
+    <span class="tag done">StateSpace 已实现</span>
+    <span class="tag done">ParameterSpace 已实现</span>
+    <span class="tag done">ActionSpace 已实现</span>
+    <span class="tag done">ObservationSpace 已实现</span>
+    <span class="tag">纯前端 · 无依赖 · 语义对齐 C++ 实现</span>
+  </div>
+</header>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-pane="ss"><span class="dot g"></span>StateSpace</button>
+  <button class="tab" data-pane="ps"><span class="dot g"></span>ParameterSpace</button>
+  <button class="tab" data-pane="as"><span class="dot g"></span>ActionSpace</button>
+  <button class="tab" data-pane="os"><span class="dot g"></span>ObservationSpace</button>
+</div>
+
+<!-- ==================================================================== -->
+<!-- StateSpace                                                           -->
+<!-- ==================================================================== -->
+<section class="pane active" id="pane-ss">
+  <div class="note">
+    <div class="t">StateSpace —— 当前状态</div>
+    唯一数据源：每个值只在 <code>State::value</code> 一处；<b>动态访问</b>与<b>强类型字段</b>命中同一份数据，不需要任何 sync 函数。
+    <code>vec()</code> 只输出 <code>vectorized=true</code> 的状态，按注册顺序排列；<code>layout()</code> 给出每个状态在 <code>vec()</code> 里的起始偏移。
+  </div>
+
+  <div class="stage">
+    <div class="card">
+      <h3>状态表</h3>
+      <p class="desc">点「应用修改」会逐行调用 <code>set()</code>；下面的「试试错误用法」按钮演示各类被拒绝的写入。</p>
+      <table id="ss-table"></table>
+      <div class="controls">
+        <button class="primary" id="ss-apply">应用修改</button>
+        <button id="ss-freeze">冻结 freeze()</button>
+        <button class="ghost" id="ss-reset">重置</button>
+      </div>
+      <div class="controls">
+        <span style="font-size:12.3px;color:var(--fg2);margin-right:2px">试试错误用法：</span>
+        <button class="danger" data-ssbad="type">改类型</button>
+        <button class="danger" data-ssbad="veclen">改 Vec 长度</button>
+        <button class="danger" data-ssbad="nan">写入 NaN</button>
+        <button class="danger" data-ssbad="int64">超范围 int64</button>
+        <button class="danger" data-ssbad="dup">重名 add()</button>
+        <button class="danger" data-ssbad="unknown">读未知名</button>
+      </div>
+      <pre class="code" id="ss-code"></pre>
+    </div>
+
+    <aside class="panel">
+      <div class="sec">
+        <div class="sh">vec() <span class="mini">优化器输入</span></div>
+        <div class="vec-out" id="ss-vec"></div>
+      </div>
+      <div class="sec">
+        <div class="sh">layout() <span class="mini">顺序 + 偏移</span></div>
+        <table id="ss-layout"></table>
+      </div>
+      <div class="sec">
+        <div class="sh">调用轨迹 / 日志</div>
+        <div class="log" id="ss-log"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- ParameterSpace                                                       -->
+<!-- ==================================================================== -->
+<section class="pane" id="pane-ps">
+  <div class="note">
+    <div class="t">ParameterSpace —— 可调参数</div>
+    参数是<b>配置 / 优化变量</b>，会改变「动作怎么执行」，但不等于系统当前状态。写入<b>没有旁路</b>（<code>raw()</code> 只返回 const 指针）；
+    <code>unvectorizeDouble()</code> 先<b>全量校验</b>再<b>原子提交</b>；JSON 导入<b>先解析后整体提交</b>，失败不动原空间。
+  </div>
+
+  <div class="stage">
+    <div class="card">
+      <h3>参数表</h3>
+      <p class="desc">数值类型参数进入 <code>vectorizeDouble()</code>；枚举按<b>下标</b>打包；字符串不参与向量化。</p>
+      <table id="ps-table"></table>
+      <div class="controls">
+        <button class="primary" id="ps-unvec-ok">unvec 合法向量</button>
+        <button class="danger" id="ps-unvec-bad">unvec 越界向量</button>
+        <button class="danger" id="ps-unvec-len">unvec 长度不符</button>
+        <button class="danger" id="ps-dup">重名 declare()</button>
+        <button id="ps-json">JSON 往返</button>
+        <button class="danger" id="ps-json-bad">导入缺 parameters 的 JSON</button>
+      </div>
+      <pre class="code" id="ps-code"></pre>
+    </div>
+
+    <aside class="panel">
+      <div class="sec">
+        <div class="sh">vectorizeDouble()</div>
+        <div class="vec-out" id="ps-vec"></div>
+      </div>
+      <div class="sec">
+        <div class="sh">layout() <span class="mini">含 offset</span></div>
+        <table id="ps-layout"></table>
+      </div>
+      <div class="sec">
+        <div class="sh">toJson()</div>
+        <pre class="code" id="ps-json-out" style="max-height:190px;overflow:auto"></pre>
+      </div>
+      <div class="sec">
+        <div class="sh">调用轨迹 / 日志</div>
+        <div class="log" id="ps-log"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- ActionSpace                                                          -->
+<!-- ==================================================================== -->
+<section class="pane" id="pane-as">
+  <div class="note">
+    <div class="t">ActionSpace —— 动作与执行（规划见 Planner）</div>
+    动作层只认识中性的 <code>Vec</code>：参数/状态用闭包捕获，<b>不持有当前状态、不含搜索</b>——规划在 <code>AuroX::Planner</code>。
+    <code>Planner::bfs()</code> 失败统一走 <code>Chain{ok=false, why=...}</code>；<code>run()</code> 只执行、<b>不推演也不推进状态</b>，<code>true</code> 不代表设备执行成功。
+  </div>
+
+  <div class="stage">
+    <div class="card">
+      <div class="board-wrap">
+        <svg id="board" viewBox="0 0 300 300" role="img" aria-label="grid"></svg>
+        <div class="legend">
+          <span><i class="lg cur"></i>当前状态（实测）</span>
+          <span><i class="lg goal"></i>目标 goal</span>
+          <span><i class="lg chain"></i>规划链</span>
+          <span><i class="lg search"></i>已探索</span>
+          <span><i class="lg pred"></i>预测 nxt</span>
+        </div>
+      </div>
+
+      <div class="two" style="margin-top:14px">
+        <div>
+          <div class="sh">start / goal</div>
+          <div class="controls" style="margin-top:0">
+            <span style="font-size:12.3px;color:var(--fg2)">cur</span>
+            <input type="number" id="as-curx" min="0" max="4" value="0" style="width:62px">
+            <input type="number" id="as-cury" min="0" max="4" value="0" style="width:62px">
+            <span style="font-size:12.3px;color:var(--fg2)">goal</span>
+            <input type="number" id="as-goalx" min="0" max="4" value="4" style="width:62px">
+            <input type="number" id="as-goaly" min="0" max="4" value="4" style="width:62px">
+          </div>
+          <div class="controls">
+            <span style="font-size:12.3px;color:var(--fg2)">maxDep</span>
+            <input type="number" id="as-maxdep" min="1" max="20" value="10" style="width:62px">
+            <label class="chk"><input type="checkbox" id="as-graph" checked>显示搜索图</label>
+            <label class="chk"><input type="checkbox" id="as-noise">注入执行偏差</label>
+          </div>
+        </div>
+        <div>
+          <div class="sh">执行</div>
+          <div class="controls" style="margin-top:0">
+            <button class="primary" id="as-plan">Planner::bfs(goal)</button>
+            <button id="as-step">执行一步</button>
+            <button id="as-run">自动执行到目标</button>
+            <button class="ghost" id="as-reset">重置</button>
+          </div>
+          <div class="sh" style="margin-top:12px">规划结果</div>
+          <div class="vec-out empty" id="as-result">尚未规划</div>
+          <div class="chain-row" id="as-chain"></div>
+        </div>
+      </div>
+
+      <pre class="code" id="as-code" style="margin-top:12px"></pre>
+    </div>
+
+    <aside class="panel">
+      <div class="sec">
+        <div class="sh">动作集 <span class="mini">reg(...)</span></div>
+        <table id="as-actions"></table>
+      </div>
+      <div class="sec">
+        <div class="sh">预测 vs 实测 <span class="mini">平方误差单位</span></div>
+        <div class="log" id="as-log"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- ObservationSpace                                                     -->
+<!-- ==================================================================== -->
+<section class="pane" id="pane-os">
+  <div class="note">
+    <div class="t">ObservationSpace —— 外部观测（已实现）</div>
+    有限维外部观测的入口：<b>接收 → 严格校验 → 最近 N 条短缓存 → 稳定拼接为 <code>Vec</code></b>。它<b>不</b>是传感器驱动、<b>不</b>是控制器、<b>不</b>是状态估计器，也<b>不</b>会自动写 <code>StateSpace</code>。
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>职责边界</h3>
+      <ul style="font-size:13.4px;padding-left:22px;margin:6px 0">
+        <li>注册<b>通道</b>，固定每样本维度与 <code>historySize</code>（条数，不是秒数）；</li>
+        <li>标量 / 定长 <code>Vec</code> / 类别（<b>one-hot</b>）三类输入共用一个结构；</li>
+        <li>可选<b>时间戳</b> + <code>validCount</code>：区分「真实 0」与「未收到」、判断新鲜度。</li>
+      </ul>
+      <h3 style="margin-top:16px">与其它空间的边界</h3>
+      <table>
+        <tr><th style="width:44%">不做</th><th>因为属于</th></tr>
+        <tr><td>编码器 / 归一化（MinMax/ZScore）</td><td>外部训练 / 数据处理代码</td></tr>
+        <tr><td>状态估计 / 传感器融合</td><td>任务相关的估计器（消费观测）</td></tr>
+        <tr><td>保存「当前状态」</td><td><code>StateSpace</code></td></tr>
+        <tr><td>图像 / 点云 / 长期历史</td><td>外部计算管线 / Memory</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>接口（已实现，非草案）</h3>
+      <pre class="code">ObservationSpace obs;
+obs.add("temperature", 1, 3);        // 3 条标量
+obs.add("joint", 3, 2);              // 2 条、每条 3 维
+obs.addCategory("mode", {"idle","run","fault"});
+obs.freeze();                        // 锁定结构，ingest 仍可用
+
+obs.ingest("temperature", 21.5);
+obs.ingest("temperature", 22.0);
+obs.ingest("joint", Vec{1,2,3});
+obs.ingest("mode", Str{"run"});      // → one-hot [0,1,0]
+
+auto b = obs.collect();              // 一致快照
+// b.vector = [0,21.5,22.0, 0,0,0,1,2,3, 0,1,0]
+// layout.validCount 区分真实样本与左侧补零
+
+obs.ingest("joint", Vec{1,2,3}, 12.40);   // 可选时标
+if (!obs.collect().layout[1].lastTimestamp) { /* 无时标/过期 → 外部安全逻辑 */ }</pre>
+      <div class="note" style="margin-top:14px">
+        完整契约见 <code>include/AuroX/Space/Readme.md</code> §1 与 §5。
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  AuroX · Space 层演示 · 语义对齐 <code>include/AuroX/Space/</code> 下的四个实现（三档用法见同目录 <code>Readme.md</code>）。
+  本页为纯前端模拟，用途是说明行为与边界，不替代编译期检查。
+</footer>
+
+</div>
+
+<script>
+/* =====================================================================
+ * Shared helpers
+ * ===================================================================== */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+// Format a state/param vector as {a, b, c}
+function fmtVec(v) {
+  const list = v.map(x => Number.isInteger(x) ? String(x) : String(Number(x.toFixed(4))));
+  return '{' + list.join(', ') + '}';
+}
+// squared distance: mirrors AuroX::Planner's private sqDist (no sqrt)
+function dist2(a, b) {
+  if (a.length !== b.length) throw new Error('dist(): state dimension mismatch');
+  let d = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (!Number.isFinite(a[i]) || !Number.isFinite(b[i])) throw new Error('dist(): non-finite state');
+    const e = a[i] - b[i];
+    d += e * e;
+  }
+  if (!Number.isFinite(d)) throw new Error('dist(): squared distance overflow');
+  return d;
+}
+// FNV-1a 64: mirrors AuroX::Space::hashOf()
+function fnv1a64(str) {
+  let h = 14695981039346656037n, p = 1099511628211n, M = 0xffffffffffffffffn;
+  for (let i = 0; i < str.length; i++) {
+    h ^= BigInt(str.charCodeAt(i) & 0xff);
+    h = (h * p) & M;
+  }
+  return h.toString(16).padStart(16, '0');
+}
+// Append one line to a .log element
+function logTo(el, text, kind) {
+  const row = document.createElement('div');
+  row.className = 'l-' + (kind || 'info');
+  row.textContent = text;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+  while (el.childElementCount > 200) el.removeChild(el.firstChild);
+}
+// Colour a code line: comments gray, "throw" lines red, ok lines green
+function codeLine(cls, text) { return { cls, text }; }
+function renderCode(el, items) {
+  el.innerHTML = '';
+  items.forEach(it => {
+    const d = document.createElement('div');
+    d.className = it.cls || '';
+    d.textContent = it.text;
+    el.appendChild(d);
+  });
+}
+
+/* =====================================================================
+ * 1. StateSpace
+ * ===================================================================== */
+const SS_TYPES = {
+  double: { vec: true,  parse: s => Number(s) },
+  float:  { vec: true,  parse: s => Number(s) },
+  int:    { vec: true,  parse: s => Math.trunc(Number(s)) },
+  int64:  { vec: true,  parse: s => Math.trunc(Number(s)) },
+  bool:   { vec: false, parse: s => s === 'true' || s === '1' },
+  string: { vec: false, parse: s => String(s) },
+  vec:    { vec: true,  parse: s => s.split(',').map(t => Number(t.trim())) },
+};
+
+const SS = {
+  items: [],          // {name, type, desc, value, vectorized}
+  index: new Map(),   // name -> position
+  frozen: false,
+  seq: [],
+};
+
+function ssReset() {
+  SS.items = [
+    { name: 'position_x', type: 'double', desc: 'X coordinate',   value: 1.5,  vectorized: true },
+    { name: 'position_y', type: 'double', desc: 'Y coordinate',   value: 2.0,  vectorized: true },
+    { name: 'velocity',   type: 'double', desc: 'Speed',          value: 0.8,  vectorized: true },
+    { name: 'pose',       type: 'vec',    desc: 'x, y, heading',  value: [1, 2, 0.5], vectorized: true },
+    { name: 'mode',       type: 'string', desc: 'Control mode',   value: 'auto', vectorized: false },
+    { name: 'armed',      type: 'bool',   desc: 'Armed flag',     value: false, vectorized: false },
+  ];
+  SS.index = new Map(SS.items.map((it, i) => [it.name, i]));
+  SS.frozen = false;
+  SS.seq = [];
+}
+function ssIndexOf(name) {
+  if (!SS.index.has(name)) throw new Error("unknown state '" + name + "'");
+  return SS.index.get(name);
+}
+function ssAdd(name, type, value, desc, vectorized) {
+  if (SS.frozen) throw new Error('schema is frozen: cannot add');
+  if (!name) throw new Error('state name must not be empty');
+  if (SS.index.has(name)) throw new Error("duplicate state name '" + name + "'");
+  if (type === 'string' && vectorized) throw new Error('a string state cannot be vectorized');
+  if ((type === 'double' || type === 'float') && !Number.isFinite(value))
+    throw new Error('non-finite float/double state');
+  if (type === 'vec') {
+    if (!value.length) throw new Error('a vectorized Vec must not be empty');
+    if (value.some(x => !Number.isFinite(x))) throw new Error('non-finite Vec state');
+  }
+  if (type === 'int64' && vectorized && Math.abs(value) > 2 ** 53)
+    throw new Error('int64 state is not exactly representable in double');
+  const i = SS.items.length;
+  SS.items.push({ name, type, desc, value, vectorized });
+  SS.index.set(name, i);
+}
+function ssSet(name, value, asType) {
+  ssSetRaw(ssIndexOf(name), value, asType);
+}
+// asType mirrors the C++ template argument: set<int>(...) on a double state is
+// a type change and must be rejected, which the JS value alone cannot express.
+function ssSetRaw(i, value, asType) {
+  const it = SS.items[i];
+  if (asType === undefined) asType = it.type;
+  if (asType !== it.type)
+    throw new Error('changing a state type is prohibited: ' + it.name + ' is ' + it.type +
+                    ', got set<' + asType + '>');
+  if (it.type === 'vec' && value.length !== it.value.length)
+    throw new Error('changing a Vec length is prohibited (' + it.value.length + ' -> ' + value.length + ')');
+  if (it.type === 'double' || it.type === 'float') {
+    if (!Number.isFinite(value)) throw new Error('non-finite float/double state');
+  }
+  if (it.type === 'vec' && value.some(x => !Number.isFinite(x))) throw new Error('non-finite Vec state');
+  if (it.type === 'int64' && it.vectorized && Math.abs(value) > 2 ** 53)
+    throw new Error('int64 state is not exactly representable in double');
+  it.value = value;
+}
+function ssComponents(it) {
+  if (!it.vectorized) return 0;
+  if (it.type === 'vec') return it.value.length;
+  return 1;
+}
+function ssDim() { return SS.items.reduce((n, it) => n + ssComponents(it), 0); }
+function ssVec() {
+  const out = [];
+  for (const it of SS.items) {
+    if (!it.vectorized) continue;
+    if (it.type === 'vec') out.push(...it.value);
+    else if (it.type === 'bool') out.push(it.value ? 1 : 0);
+    else out.push(Number(it.value));
+  }
+  return out;
+}
+function ssLayout() {
+  const out = []; let off = 0;
+  for (const it of SS.items) {
+    if (!it.vectorized) continue;
+    const n = ssComponents(it);
+    out.push({ name: it.name, type: it.type, offset: off, components: n });
+    off += n;
+  }
+  return out;
+}
+
+function renderSS() {
+  // table
+  const t = $('#ss-table');
+  t.innerHTML =
+    '<tr><th style="width:17%">名称</th><th style="width:12%">类型</th><th style="width:26%">说明</th>' +
+    '<th style="width:12%">进 vec()</th><th>值</th></tr>';
+  SS.items.forEach((it, i) => {
+    const tr = document.createElement('tr');
+    const valStr = it.type === 'vec' ? it.value.join(', ') : String(it.value);
+    tr.innerHTML =
+      '<td class="mono">' + it.name + '</td>' +
+      '<td><span class="pill b">' + it.type + '</span></td>' +
+      '<td style="color:var(--fg2)">' + it.desc + '</td>' +
+      '<td>' + (it.vectorized ? '<span class="pill g">是</span>' : '<span class="pill">否</span>') + '</td>' +
+      '<td><input type="text" data-ssrow="' + i + '" value="' + valStr + '"></td>';
+    t.appendChild(tr);
+  });
+  // vec
+  const v = ssVec();
+  const vEl = $('#ss-vec');
+  vEl.textContent = 'dim = ' + ssDim() + '  →  ' + fmtVec(v);
+  vEl.classList.toggle('empty', v.length === 0);
+  // layout
+  const lt = $('#ss-layout');
+  lt.innerHTML = '<tr><th>name</th><th>type</th><th class="num">offset</th><th class="num">comps</th></tr>';
+  ssLayout().forEach(r => {
+    lt.innerHTML += '<tr><td class="mono">' + r.name + '</td><td>' + r.type + '</td>' +
+                    '<td class="num">' + r.offset + '</td><td class="num">' + r.components + '</td></tr>';
+  });
+  // freeze state
+  $('#ss-freeze').disabled = SS.frozen;
+  $('#ss-freeze').textContent = SS.frozen ? '已冻结 ✓' : '冻结 freeze()';
+}
+function ssTrace(items) { renderCode($('#ss-code'), items.slice(-9)); }
+
+// --- StateSpace interactions ------------------------------------------
+$$('#tabs .tab').forEach(b => b.addEventListener('click', () => {
+  $$('#tabs .tab').forEach(x => x.classList.remove('active'));
+  $$('.pane').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  $('#pane-' + b.dataset.pane).classList.add('active');
+}));
+
+$('#ss-apply').addEventListener('click', () => {
+  const trace = [];
+  $$('#ss-table input[data-ssrow]').forEach(inp => {
+    const i = Number(inp.dataset.ssrow, 10);
+    const it = SS.items[i];
+    try {
+      const parsed = SS_TYPES[it.type].parse(inp.value);
+      ssSetRaw(i, parsed);
+      trace.push(codeLine('okc', 'states.set("' + it.name + '", ' + JSON.stringify(parsed) + ');   // ok'));
+    } catch (e) {
+      trace.push(codeLine('er', 'states.set("' + it.name + '", ...);   // 抛异常: ' + e.message));
+      logTo($('#ss-log'), '✗ set(' + it.name + '): ' + e.message, 'err');
+    }
+  });
+  if (!trace.length) trace.push(codeLine('cm', '// 无变化'));
+  renderSS(); ssTrace(trace);
+});
+
+$('#ss-freeze').addEventListener('click', () => {
+  SS.frozen = true;
+  logTo($('#ss-log'), '✓ freeze(): 之后 add 被拒绝，set 仍然允许', 'ok');
+  renderSS();
+  ssTrace([codeLine('cm', 'states.freeze();   // 只锁结构，不锁数值')]);
+});
+
+$('#ss-reset').addEventListener('click', () => {
+  ssReset(); renderSS();
+  $('#ss-log').innerHTML = '';
+  ssTrace([codeLine('cm', '// 已重置为初始状态表')]);
+});
+
+$$('[data-ssbad]').forEach(b => b.addEventListener('click', () => {
+  const kind = b.dataset.ssbad;
+  const trace = [];
+  try {
+    if (kind === 'type') {
+      trace.push(codeLine('cm', '// 演示：set<int> 到一个 double 状态'));
+      ssSet('velocity', 3, 'int');
+    } else if (kind === 'veclen') {
+      trace.push(codeLine('cm', '// 演示：改变 Vec 的长度'));
+      ssSet('pose', [1, 2]);
+    } else if (kind === 'nan') {
+      trace.push(codeLine('cm', '// 演示：写入 NaN'));
+      ssSet('velocity', NaN);
+    } else if (kind === 'int64') {
+      trace.push(codeLine('cm', '// 演示：int64 超出 2^53'));
+      ssAdd('counter', 'int64', 1e18, 'big', true);
+    } else if (kind === 'dup') {
+      trace.push(codeLine('cm', '// 演示：重名 add'));
+      ssAdd('velocity', 'double', 0.0, 'dup', true);
+    } else if (kind === 'unknown') {
+      trace.push(codeLine('cm', '// 演示：读取未知名'));
+      const i = ssIndexOf('not_here'); void i;
+    }
+    trace.push(codeLine('er', '// 预期抛异常，但没有 —— 这是缺陷'));
+  } catch (e) {
+    trace.push(codeLine('er', '// 抛异常（符合预期）: ' + e.message));
+    logTo($('#ss-log'), '✗ ' + e.message, 'err');
+  }
+  ssTrace(trace);
+  renderSS();
+}));
+
+ssReset(); renderSS();
+ssTrace([codeLine('cm', '// 点按钮后这里会显示等价的 C++ 调用与结果')]);
+
+/* =====================================================================
+ * 2. ParameterSpace
+ * ===================================================================== */
+const PS = { items: [], index: new Map() };
+
+function psReset() {
+  PS.items = [
+    { name: 'Kp',   type: 'double', kind: 'continuous', value: 1.0,  lo: 0.0, hi: 20.0 },
+    { name: 'Ki',   type: 'double', kind: 'continuous', value: 0.1,  lo: 0.0, hi: 20.0 },
+    { name: 'Kd',   type: 'double', kind: 'continuous', value: 0.05, lo: 0.0, hi: 20.0 },
+    { name: 'mode', type: 'int',    kind: 'discrete',   value: 1,    choices: [0, 1, 2] },
+    { name: 'strategy', type: 'enum', kind: 'discrete', value: 0,    labels: ['PID', 'PI', 'PD'] },
+    { name: 'tag',  type: 'string', kind: 'none',       value: 'auto' },
+  ];
+  PS.index = new Map(PS.items.map((it, i) => [it.name, i]));
+}
+function psAdd(p) {
+  if (PS.index.has(p.name)) throw new Error("duplicate parameter name '" + p.name + "'");
+  PS.index.set(p.name, PS.items.length);
+  PS.items.push(p);
+}
+// pack one parameter into the optimizer vector; null = not vectorized
+function psPack(it) {
+  if (it.type === 'string') return null;
+  if (it.type === 'enum') return it.value;           // enum packs its index
+  if (it.type === 'bool') return it.value ? 1 : 0;
+  return Number(it.value);
+}
+function psComponents(it) { return psPack(it) === null ? 0 : 1; }
+function psVec() { return PS.items.map(psPack).filter(x => x !== null); }
+function psLayout() {
+  const out = []; let off = 0;
+  for (const it of PS.items) {
+    const c = psComponents(it);
+    if (!c) continue;
+    out.push({ name: it.name, type: it.type, isEnum: it.type === 'enum', offset: off, components: c });
+    off += c;
+  }
+  return out;
+}
+// acceptsDouble: the single legality rule shared by every write entry point
+function psAccepts(it, d) {
+  if (!Number.isFinite(d)) return false;
+  if (it.type === 'string') return false;
+  if (it.type === 'int') {
+    if (d < -2147483648 || d > 2147483647) return false;   // fits() before back()
+  }
+  const cand = it.type === 'bool' ? (d !== 0) : Math.round(d);
+  if (it.choices) return it.choices.includes(cand);
+  if (it.labels) return Number.isInteger(cand) && cand >= 0 && cand < it.labels.length;
+  if (it.lo !== undefined) return cand >= it.lo && cand <= it.hi;
+  return true;
+}
+function psUnvec(v) {
+  const expected = PS.items.reduce((n, it) => n + psComponents(it), 0);
+  if (v.length !== expected)
+    throw new Error('vector length mismatch (expected ' + expected + ', got ' + v.length + ')');
+  // pass 1: validate everything (all-or-nothing)
+  let i = 0;
+  for (const it of PS.items) {
+    if (!psComponents(it)) continue;
+    if (!psAccepts(it, v[i]))
+      throw new Error("value out of range for parameter '" + it.name + "' (" + v[i] + ')');
+    i++;
+  }
+  // pass 2: commit
+  i = 0;
+  for (const it of PS.items) {
+    if (!psComponents(it)) continue;
+    if (it.type === 'bool') it.value = v[i] !== 0;
+    else if (it.type === 'int' || it.type === 'enum') it.value = Math.round(v[i]);
+    else it.value = v[i];
+    i++;
+  }
+}
+function psToJson() {
+  return {
+    parameters: PS.items.map(it => {
+      const j = { name: it.name, type: it.type, kind: it.kind, value: it.type === 'enum' ? it.value : it.value };
+      if (it.type === 'enum') j.labels = it.labels;
+      else if (it.choices) j.choices = it.choices;
+      else if (it.type !== 'string') { j.bounded = it.lo !== undefined; if (it.lo !== undefined) { j.lower = it.lo; j.upper = it.hi; } }
+      return j;
+    })
+  };
+}
+function psFromJson(j) {
+  if (j === null || typeof j !== 'object' || Array.isArray(j))
+    throw new Error('JSON root must be an object');
+  if (!('parameters' in j) || !Array.isArray(j.parameters))
+    throw new Error("missing 'parameters' array");
+  // parse into a temporary space; commit only on full success
+  const tmp = [];
+  const seen = new Set();
+  for (const pj of j.parameters) {
+    if (pj === null || typeof pj !== 'object') throw new Error('parameter entry must be an object');
+    if (typeof pj.type !== 'string' || typeof pj.name !== 'string')
+      throw new Error('malformed parameter entry (need name + type)');
+    if (seen.has(pj.name)) throw new Error("duplicate parameter name '" + pj.name + "'");
+    seen.add(pj.name);
+    const it = { name: pj.name, type: pj.type, kind: pj.kind || 'continuous', value: pj.value };
+    if (pj.choices) it.choices = pj.choices;
+    if (pj.labels) it.labels = pj.labels;
+    if (pj.lower !== undefined) { it.lo = pj.lower; it.hi = pj.upper; }
+    tmp.push(it);
+  }
+  PS.items = tmp;
+  PS.index = new Map(tmp.map((it, i) => [it.name, i]));
+}
+
+function renderPS() {
+  const t = $('#ps-table');
+  t.innerHTML = '<tr><th style="width:16%">名称</th><th style="width:11%">类型</th><th style="width:14%">类别</th>' +
+                '<th style="width:31%">边界 / 候选</th><th>值</th></tr>';
+  PS.items.forEach(it => {
+    let b = '—';
+    if (it.choices) b = 'choices ' + fmtVec(it.choices);
+    else if (it.labels) b = 'labels [' + it.labels.join(' | ') + ']';
+    else if (it.lo !== undefined) b = '[' + it.lo + ', ' + it.hi + ']';
+    const kindPill = it.kind === 'discrete' ? '<span class="pill a">discrete</span>'
+                   : it.kind === 'continuous' ? '<span class="pill b">continuous</span>'
+                   : '<span class="pill">—</span>';
+    t.innerHTML += '<tr><td class="mono">' + it.name + '</td><td>' + it.type + '</td><td>' + kindPill + '</td>' +
+                   '<td class="mono" style="font-size:11.6px">' + b + '</td>' +
+                   '<td class="num">' + (it.type === 'enum' ? it.labels[it.value] + ' (' + it.value + ')' : String(it.value)) + '</td></tr>';
+  });
+  const v = psVec();
+  $('#ps-vec').textContent = 'dim = ' + v.length + '  →  ' + fmtVec(v);
+  $('#ps-vec').classList.toggle('empty', v.length === 0);
+  const lt = $('#ps-layout');
+  lt.innerHTML = '<tr><th>name</th><th>type</th><th class="num">offset</th><th class="num">comps</th></tr>';
+  psLayout().forEach(r => {
+    lt.innerHTML += '<tr><td class="mono">' + r.name + '</td><td>' + r.type +
+                    (r.isEnum ? ' <span class="pill a">enum</span>' : '') + '</td>' +
+                    '<td class="num">' + r.offset + '</td><td class="num">' + r.components + '</td></tr>';
+  });
+  $('#ps-json-out').textContent = JSON.stringify(psToJson(), null, 2);
+}
+function psTrace(items) { renderCode($('#ps-code'), items.slice(-9)); }
+
+$('#ps-unvec-ok').addEventListener('click', () => {
+  const v = PS.items.map(psPack).filter(x => x !== null).map(x => Number(x));
+  v[0] = 2.0; v[1] = 0.3;
+  try {
+    psUnvec(v);
+    logTo($('#ps-log'), '✓ unvectorizeDouble(' + fmtVec(v) + ') 提交成功', 'ok');
+    psTrace([codeLine('okc', 'space.unvectorizeDouble(' + fmtVec(v) + ');   // 全量校验后原子提交')]);
+  } catch (e) {
+    logTo($('#ps-log'), '✗ ' + e.message, 'err');
+    psTrace([codeLine('er', '// 抛异常: ' + e.message)]);
+  }
+  renderPS();
+});
+$('#ps-unvec-bad').addEventListener('click', () => {
+  const v = PS.items.map(psPack).filter(x => x !== null).map(x => Number(x));
+  v[0] = 999;   // Kp is bounded to [0, 20]
+  try {
+    psUnvec(v);
+    psTrace([codeLine('er', '// 预期抛异常，但没有')]);
+  } catch (e) {
+    logTo($('#ps-log'), '✗ ' + e.message, 'err');
+    psTrace([
+      codeLine('cm', '// Kp 的边界是 [0, 20]，候选 999 越界'),
+      codeLine('er', 'space.unvectorizeDouble(...);   // 抛异常: ' + e.message),
+      codeLine('cm', '// 注意：全部参数保持原值（all-or-nothing）'),
+    ]);
+  }
+  renderPS();
+});
+$('#ps-unvec-len').addEventListener('click', () => {
+  try {
+    psUnvec([1.0, 2.0]);
+    psTrace([codeLine('er', '// 预期抛异常，但没有')]);
+  } catch (e) {
+    logTo($('#ps-log'), '✗ ' + e.message, 'err');
+    psTrace([codeLine('er', 'space.unvectorizeDouble({1, 2});   // 抛异常: ' + e.message)]);
+  }
+  renderPS();
+});
+$('#ps-dup').addEventListener('click', () => {
+  try {
+    psAdd({ name: 'Kp', type: 'double', kind: 'continuous', value: 0.0, lo: 0.0, hi: 1.0 });
+    psTrace([codeLine('er', '// 预期抛异常，但没有')]);
+  } catch (e) {
+    logTo($('#ps-log'), '✗ ' + e.message, 'err');
+    psTrace([codeLine('er', 'space.declare("Kp", 0.0, 0.0, 1.0);   // 抛异常: ' + e.message)]);
+  }
+  renderPS();
+});
+$('#ps-json').addEventListener('click', () => {
+  const snap = psToJson();
+  // mutate one value, then round-trip back
+  PS.items[0].value = 9.9;
+  try {
+    psFromJson(snap);
+    logTo($('#ps-log'), '✓ JSON 往返成功（已恢复 Kp=' + PS.items[0].value + '）', 'ok');
+    psTrace([codeLine('okc', 'space.tryFromJson(space.toJson());   // true，空间被完整重建')]);
+  } catch (e) {
+    logTo($('#ps-log'), '✗ ' + e.message, 'err');
+  }
+  renderPS();
+});
+$('#ps-json-bad').addEventListener('click', () => {
+  const before = psVec().length;
+  try {
+    psFromJson({});   // missing "parameters"
+    psTrace([codeLine('er', '// 预期失败，但没有')]);
+  } catch (e) {
+    logTo($('#ps-log'), '✗ ' + e.message + '（原空间未被修改，dim 仍为 ' + before + '）', 'err');
+    psTrace([
+      codeLine('cm', '// 恢复的旧实现在这里会返回 true 并把空间清空'),
+      codeLine('er', 'space.tryFromJson(json::object());   // false: ' + e.message),
+      codeLine('okc', '// 原空间保持不变，dim = ' + before),
+    ]);
+  }
+  renderPS();
+});
+
+psReset(); renderPS();
+psTrace([codeLine('cm', '// 点按钮后这里会显示等价的 C++ 调用与结果')]);
+
+/* =====================================================================
+ * 3. ActionSpace
+ * ===================================================================== */
+const AS_SIZE = 5;                       // grid 0..4
+const AS_ACTION_DEFS = [
+  { name: 'right', type: 'move', desc: 'x += 1', cond: { d: 'x <= 3', f: s => s[0] <= 3 }, nxt: s => [s[0] + 1, s[1]] },
+  { name: 'left',  type: 'move', desc: 'x -= 1', cond: { d: 'x >= 1', f: s => s[0] >= 1 }, nxt: s => [s[0] - 1, s[1]] },
+  { name: 'up',    type: 'move', desc: 'y += 1', cond: { d: 'y <= 3', f: s => s[1] <= 3 }, nxt: s => [s[0], s[1] + 1] },
+  { name: 'down',  type: 'move', desc: 'y -= 1', cond: { d: 'y >= 1', f: s => s[1] >= 1 }, nxt: s => [s[0], s[1] - 1] },
+];
+
+const AS = {
+  cur: [0, 0], goal: [4, 4], ban: new Set(),
+  actions: [], byHash: new Map(), order: [], chain: null, explored: [], split: -1,
+};
+function asReset() {
+  AS.cur = [Number($('#as-curx').value), Number($('#as-cury').value)];
+  AS.goal = [Number($('#as-goalx').value), Number($('#as-goaly').value)];
+  AS.ban = new Set(); AS.chain = null; AS.explored = []; AS.split = 0;
+  AS._nodes = null; AS._chainPts = null; AS._pred = null;
+  AS.actions = AS_ACTION_DEFS.map(d => ({
+    name: d.name, type: d.type, desc: d.desc, cond: d.cond, nxtFn: d.nxt,
+    hash: fnv1a64(d.type + '/' + d.name),
+  }));
+  AS.byHash = new Map(AS.actions.map(a => [a.hash, a]));
+  AS.order = AS.actions.map(a => a.hash);
+}
+function asGet(h) { return AS.byHash.get(h) || null; }
+function asCan(a, s) { return a.cond.f(s); }
+function asNext(a, s) { return a.nxtFn(s); }
+function asValid(s, dim) {
+  if (s.length !== dim) return false;
+  return s.every(Number.isFinite);
+}
+// faithful port of AuroX::Planner::bfs()
+function asPlan(goal, maxDep, eps, asGraph, maxNodes) {
+  const out = { ok: false, why: '', acts: [], edges: [] };
+  if (!Number.isFinite(eps) || eps < 0) { out.why = 'invalid eps'; return out; }
+  if (maxDep < 1) { out.why = 'invalid maxDep'; return out; }
+  if (maxNodes < 1) { out.why = 'invalid maxNodes'; return out; }
+  if (goal.length !== AS.cur.length) { out.why = 'goal dimension mismatch'; return out; }
+  if (!asValid(goal, goal.length)) { out.why = 'non-finite goal'; return out; }
+  if (!asValid(AS.cur, AS.cur.length)) { out.why = 'non-finite current state'; return out; }
+
+  const seen = [{ x: AS.cur.slice(), par: -1, h: null }];
+  const exact = new Map(); exact.set(AS.cur.join(','), 0);
+  let explored = 0;
+  const emit = () => {
+    out.nodes = seen.map(n => n.x);           // demo-only: node coords for the board
+    if (!asGraph) return;
+    out.edges = [];
+    for (let i = 0; i < seen.length; i++) if (seen[i].par >= 0) out.edges.push([seen[i].par, i]);
+  };
+  const hit = (x) => dist2(x, goal) <= eps;
+
+  if (hit(seen[0].x)) { out.ok = true; emit(); return out; }
+
+  let layer = [0];
+  for (let d = 0; d < maxDep && layer.length; d++) {
+    const next = [];
+    for (const i of layer) {
+      for (const h of AS.order) {
+        if (explored >= maxNodes) { out.why = 'node budget exhausted'; emit(); return out; }
+        if (AS.ban.has(h)) continue;                        // (1) ban set
+        const a = asGet(h); if (!a) continue;
+        if (!asCan(a, seen[i].x)) continue;                 // (2) conditions unmet -> no edge
+        const nx = asNext(a, seen[i].x);                    // (3) pure prediction
+        if (!asValid(nx, AS.cur.length)) {                  // (3b) nxt contract
+          out.why = "action '" + a.name + "' produced an invalid predicted state"; emit(); return out;
+        }
+        let dup = exact.has(nx.join(','));
+        if (!dup) {                                          // (4) dedup
+          for (const n of seen) if (dist2(n.x, nx) <= eps) { dup = true; break; }
+        }
+        if (dup) continue;
+        seen.push({ x: nx, par: i, h });
+        const k = seen.length - 1;
+        exact.set(nx.join(','), k);
+        explored++;
+        if (hit(nx)) {                                       // (5) hit -> backtrack
+          const r = [];
+          for (let p = k; p > 0; p = seen[p].par) r.push(seen[p].h);
+          out.acts = r.reverse(); out.ok = true; emit(); return out;
+        }
+        next.push(k);
+      }
+    }
+    layer = next;
+  }
+  emit();
+  out.why = 'unreachable within depth ' + maxDep;
+  return out;
+}
+
+function renderAS() {
+  // board
+  const PAD = 14, CELL = (300 - PAD * 2) / AS_SIZE;
+  const cx = (v) => PAD + (v + 0.5) * CELL;
+  const cy = (v) => 300 - PAD - (v + 0.5) * CELL;
+  const svg = $('#board');
+  let s = '';
+  s += '<rect x="0" y="0" width="300" height="300" fill="#ffffff" rx="10"/>';
+  for (let gx = 0; gx < AS_SIZE; gx++) for (let gy = 0; gy < AS_SIZE; gy++) {
+    s += `<rect x="${PAD + gx * CELL}" y="${300 - PAD - (gy + 1) * CELL}" width="${CELL}" height="${CELL}"
+           fill="#f6f8fa" stroke="#e6eaef"/>`;
+  }
+  // explored graph: subtle lines behind the chain
+  if (AS._nodes) {
+    AS.explored.forEach(([a, b]) => {
+      const n1 = AS._nodes[a], n2 = AS._nodes[b];
+      if (n1 && n2)
+        s += `<line x1="${cx(n1[0])}" y1="${cy(n1[1])}" x2="${cx(n2[0])}" y2="${cy(n2[1])}" stroke="#dce3ea" stroke-width="2"/>`;
+    });
+  }
+  // chain path
+  if (AS._chainPts && AS._chainPts.length > 1) {
+    for (let i = 1; i < AS._chainPts.length; i++) {
+      const p = AS._chainPts[i - 1], q = AS._chainPts[i];
+      s += `<line x1="${cx(p[0])}" y1="${cy(p[1])}" x2="${cx(q[0])}" y2="${cy(q[1])}" stroke="#0969da" stroke-width="3" opacity=".45"/>`;
+    }
+  }
+  // chain points
+  if (AS._chainPts) AS._chainPts.slice(1).forEach(p => {
+    s += `<circle cx="${cx(p[0])}" cy="${cy(p[1])}" r="6" fill="#0969da" opacity=".5"/>`;
+  });
+  // grid labels
+  for (let gx = 0; gx < AS_SIZE; gx++) s += `<text x="${cx(gx)}" y="294" font-size="8" fill="#8c959f" text-anchor="middle">${gx}</text>`;
+  for (let gy = 0; gy < AS_SIZE; gy++) s += `<text x="7" y="${cy(gy) + 3}" font-size="8" fill="#8c959f">${gy}</text>`;
+  // goal
+  const gxp = cx(AS.goal[0]), gyp = cy(AS.goal[1]);
+  s += `<rect x="${gxp - 8}" y="${gyp - 8}" width="16" height="16" fill="#fffbeb" stroke="#9a6700" stroke-width="2" transform="rotate(45 ${gxp} ${gyp})" rx="2"/>`;
+  // predicted (next step preview)
+  if (AS._pred) s += `<circle cx="${cx(AS._pred[0])}" cy="${cy(AS._pred[1])}" r="9" fill="none" stroke="#8250df" stroke-width="2" stroke-dasharray="4 3"/>`;
+  // cur
+  s += `<circle cx="${cx(AS.cur[0])}" cy="${cy(AS.cur[1])}" r="10" fill="#0969da"/>`;
+  s += `<text x="${cx(AS.cur[0])}" y="${cy(AS.cur[1]) + 3.5}" font-size="9" fill="#fff" text-anchor="middle">cur</text>`;
+  svg.innerHTML = s;
+
+  // action list
+  const at = $('#as-actions');
+  at.innerHTML = '<tr><th>name/type</th><th>条件</th><th>nxt</th><th>hash</th></tr>';
+  AS.actions.forEach(a => {
+    const banned = AS.ban.has(a.hash);
+    at.innerHTML += '<tr' + (banned ? ' style="opacity:.55"' : '') + '><td class="mono">' + a.name +
+      '<br><span class="pill" style="font-size:10px">' + a.type + '</span></td>' +
+      '<td class="mono" style="font-size:11.4px">' + a.cond.d + '</td>' +
+      '<td class="mono" style="font-size:11.4px">' + a.desc + '</td>' +
+      '<td class="mono" style="font-size:10.5px">' + a.hash.slice(0, 8) +
+      (banned ? ' <span class="pill r">banned</span>' : '') + '</td></tr>';
+  });
+}
+function asChainRender() {
+  const row = $('#as-chain');
+  if (!AS.chain || !AS.chain.ok) { row.innerHTML = ''; return; }
+  row.innerHTML = '';
+  AS.chain.acts.forEach((h, i) => {
+    if (i) { const ar = document.createElement('span'); ar.className = 'arrow'; ar.textContent = '→'; row.appendChild(ar); }
+    const a = asGet(h);
+    const c = document.createElement('span');
+    c.className = 'chip' + (i < AS.split ? ' done' : '');
+    c.innerHTML = '<span class="idx">' + i + '</span>' + a.name;
+    row.appendChild(c);
+  });
+}
+function asSetResult(text, ok) {
+  const el = $('#as-result');
+  el.textContent = text;
+  el.classList.toggle('empty', false);
+  el.style.color = ok ? 'var(--blue)' : 'var(--red)';
+}
+function asTrace(items) { renderCode($('#as-code'), items.slice(-9)); }
+
+$('#as-plan').addEventListener('click', () => {
+  AS.cur = [Number($('#as-curx').value), Number($('#as-cury').value)];
+  AS.goal = [Number($('#as-goalx').value), Number($('#as-goaly').value)];
+  const r = asPlan(AS.goal, Number($('#as-maxdep').value), 1e-6, $('#as-graph').checked, 100000);
+  AS.chain = r;
+  // walk the chain to collect board points
+  const pts = [AS.cur.slice()];
+  let s = AS.cur.slice();
+  if (r.ok) for (const h of r.acts) { s = asNext(asGet(h), s); pts.push(s.slice()); }
+  AS._chainPts = r.ok ? pts : null;
+  AS._nodes = r.nodes || null;
+  AS.explored = r.edges.slice(0, 400);
+  AS._pred = r.ok && r.acts.length ? asNext(asGet(r.acts[0]), AS.cur) : null;
+  asStepIdx = 0; AS.split = 0;
+  if (r.ok) {
+    asSetResult('ok = true, 链长 ' + r.acts.length + '，搜索图（演示）' + r.edges.length + ' 边', true);
+    logTo($('#as-log'), '✓ bfs 成功：' + r.acts.map(h => asGet(h).name).join(' → '), 'ok');
+    asTrace([codeLine('okc', 'Chain c = AuroX::Planner::bfs(as, cur, Vec' + fmtVec(AS.goal) + ');   // ok, acts = ' + r.acts.length)]);
+  } else {
+    asSetResult('ok = false, why = ' + r.why, false);
+    logTo($('#as-log'), '✗ bfs 失败：' + r.why, 'err');
+    asTrace([
+      codeLine('cm', '// Planner::bfs() 的失败统一走 Chain，不抛异常'),
+      codeLine('er', 'Chain c = Planner::bfs(...);   // ok = false, why = "' + r.why + '"'),
+    ]);
+  }
+  renderAS(); asChainRender();
+});
+
+// Execute one step: predicted vs actual, then ban + replan on divergence
+let asStepIdx = 0;
+function asExecuteOne() {
+  if (!AS.chain || !AS.chain.ok) { logTo($('#as-log'), '• 先点「Planner::bfs(goal)」', 'info'); return false; }
+  if (AS.split >= 0) { logTo($('#as-log'), '• 已发生偏差，链已重规划', 'info'); return false; }
+  const h = AS.chain.acts[asStepIdx];
+  if (h === undefined) { logTo($('#as-log'), '• 链已执行完', 'info'); return false; }
+  const a = asGet(h);
+  const before = AS.cur.slice();
+  const pred = asNext(a, before);                        // 1) 任务侧取候选后继 Action::next
+  AS.cur = pred.slice();                                 // 2) 任务侧推进自己的状态（ActionSpace 不持有状态）
+  let actual = pred.slice();
+  const noise = $('#as-noise').checked;
+  if (noise && asStepIdx === 1) {                        // 3) device deliberately misbehaves
+    actual = before.slice(); actual[1] = Math.min(AS_SIZE - 1, actual[1] + 1);
+  }
+  const dev = dist2(actual, pred);
+  logTo($('#as-log'),
+    'step ' + asStepIdx + ' ' + a.name + '  pred' + fmtVec(pred) + ' actual' + fmtVec(actual) +
+    '  dist2=' + dev.toFixed(3) + (dev > 1e-6 ? '  ✗ 超出 eps' : '  ✓'), dev > 1e-6 ? 'err' : 'ok');
+  AS._pred = null;
+  if (dev > 1e-6) {                                      // 4) divergence detected
+    asStepIdx++;
+    AS.ban.add(h);                                       // 5) ban the culprit
+    AS.cur = actual.slice();
+    AS._chainPts = [actual.slice()];
+    const r = asPlan(AS.goal, Number($('#as-maxdep').value), 1e-6, false, 100000);
+    AS.chain = r;
+    AS._nodes = r.nodes || null;
+    AS.explored = [];                                    // replan runs without a graph request
+    if (r.ok) {
+      const pts = [actual.slice()]; let s = actual.slice();
+      for (const hh of r.acts) { s = asNext(asGet(hh), s); pts.push(s.slice()); }
+      AS._chainPts = pts;
+      asSetResult('检测到偏差 → ban + 重规划：新链长 ' + r.acts.length, true);
+      asTrace([
+        codeLine('cm', '// 预测与实测不一致：任务侧平方误差 = ' + dev.toFixed(3) + ' > eps'),
+        codeLine('okc', 'as.ban(h);  c = Planner::bfs(as, actual, goal);   // 新链 ' + r.acts.map(x => asGet(x).name).join(' → ')),
+      ]);
+    } else {
+      asSetResult('ban + 重规划后不可达：' + r.why, false);
+      asTrace([codeLine('er', 'c = Planner::bfs(as, actual, goal);   // ok=false, why="' + r.why + '"')]);
+    }
+    asStepIdx = 0;
+    AS.split = 0;
+    $('#as-step').disabled = false;
+  } else {
+    asStepIdx++;
+    AS.split = asStepIdx;
+    if (asStepIdx >= AS.chain.acts.length) {
+      asSetResult('已到达目标 ' + fmtVec(AS.cur), true);
+      logTo($('#as-log'), '✓ 到达目标 ' + fmtVec(AS.cur), 'ok');
+    }
+  }
+  renderAS(); asChainRender();
+  return true;
+}
+$('#as-step').addEventListener('click', () => { asExecuteOne(); });
+$('#as-run').addEventListener('click', () => {
+  let guard = 0;
+  while (asExecuteOne() && guard++ < 40) { /* auto-run */ }
+});
+$('#as-reset').addEventListener('click', () => {
+  asStepIdx = 0; asReset(); renderAS(); asChainRender();
+  $('#as-log').innerHTML = ''; asSetResult('尚未规划', true);
+  asTrace([codeLine('cm', '// 已重置：start=(0,0)，ban 集清空')]);
+});
+['#as-curx', '#as-cury', '#as-goalx', '#as-goaly'].forEach(sel =>
+  $(sel).addEventListener('change', () => { asStepIdx = 0; asReset(); renderAS(); }));
+
+asReset(); renderAS(); asChainRender();
+asTrace([codeLine('cm', '// 点「Planner::bfs(goal)」开始：动作层只认识中性的 Vec')]);
+</script>
+</body>
+</html>

@@ -11,38 +11,60 @@
 // ============================================================================
 
 #include <cmath>
+#include <limits>
 #include <utility>
 #include <cassert>
 #include <fstream>
+#include <stdexcept>
 
 namespace AuroX {
 namespace Space {
 
 // ============================================================================
 // NumericTraits specializations
+// ----------------------------------------------------------------------------
+// Each `fits(double)` answers "is this double representable as T?" and MUST be
+// checked before `back()`. P2: back() previously ran std::llround plus a plain
+// cast with no range check, so a candidate like 1e30 could overflow the target
+// type (undefined behaviour in llround) instead of being rejected.
 // ============================================================================
 
 template <> struct NumericTraits<bool> {
     static constexpr bool vectorizable = true;
     static double conv(bool v) { return v ? 1.0 : 0.0; }
+    static bool fits(double d) { return std::isfinite(d); }
     static bool back(double d) { return d != 0.0; }
 };
 
 template <> struct NumericTraits<int> {
     static constexpr bool vectorizable = true;
     static double conv(int v) { return static_cast<double>(v); }
+    // Reject anything that cannot be represented by int BEFORE rounding.
+    static bool fits(double d) {
+        if (!std::isfinite(d)) return false;
+        if (d < static_cast<double>(std::numeric_limits<int>::min())) return false;
+        if (d > static_cast<double>(std::numeric_limits<int>::max())) return false;
+        return true;
+    }
     static int back(double d) { return static_cast<int>(std::llround(d)); }
 };
 
 template <> struct NumericTraits<float> {
     static constexpr bool vectorizable = true;
     static double conv(float v) { return static_cast<double>(v); }
+    // A finite double can still overflow float; reject it before the cast.
+    static bool fits(double d) {
+        if (!std::isfinite(d)) return false;
+        constexpr double hi = static_cast<double>(std::numeric_limits<float>::max());
+        return d >= -hi && d <= hi;
+    }
     static float back(double d) { return static_cast<float>(d); }
 };
 
 template <> struct NumericTraits<double> {
     static constexpr bool vectorizable = true;
     static double conv(double v) { return v; }
+    static bool fits(double d) { return std::isfinite(d); }
     static double back(double d) { return d; }
 };
 
@@ -84,16 +106,22 @@ std::unique_ptr<ParameterBase> TypedParameter<T>::clone() const {
 template <typename T>
 bool TypedParameter<T>::isBounded() const { return hasBounds; }
 
+// P1 (unified write validation): the ONE place that knows what a legal value
+// is. Discrete parameters accept only a listed candidate; bounded continuous
+// parameters accept [lower, upper]; everything else accepts any value.
 template <typename T>
-bool TypedParameter<T>::isWithinBounds() const {
+bool TypedParameter<T>::accepts(const T& cand) const {
     if (!choices.empty()) {
         for (const auto& c : choices)
-            if (c == value) return true;
+            if (c == cand) return true;
         return false;
     }
     if (!hasBounds) return true;
-    return value >= lower && value <= upper;
+    return cand >= lower && cand <= upper;
 }
+
+template <typename T>
+bool TypedParameter<T>::isWithinBounds() const { return accepts(value); }
 
 template <typename T>
 json TypedParameter<T>::toJson() const {
@@ -159,6 +187,22 @@ std::size_t TypedParameter<T>::componentCount() const {
     return NumericTraits<T>::vectorizable ? 1u : 0u;
 }
 
+// P-04: validate a candidate vector component before commit: it must be finite,
+// representable by the target type, and inside the discrete candidate set (if
+// any) or the [lower, upper] bounds (if bounded). Shares accepts() with the
+// typed unvectorize<T>() path so both write entry points use the same rule.
+template <typename T>
+bool TypedParameter<T>::acceptsDouble(double v) const {
+    if constexpr (NumericTraits<T>::vectorizable) {
+        if (!std::isfinite(v)) return false;
+        if (!NumericTraits<T>::fits(v)) return false;   // P2: range before conversion
+        return accepts(NumericTraits<T>::back(v));
+    } else {
+        (void)v;
+        return false;
+    }
+}
+
 // ============================================================================
 // ParameterSpace - template members
 // ============================================================================
@@ -187,12 +231,32 @@ std::vector<T> ParameterSpace::vectorize() const {
 
 template <typename T>
 void ParameterSpace::unvectorize(const std::vector<T>& v) {
+    // P1 (unified write validation): mirror the unvectorizeDouble() contract -
+    // require the full length, validate EVERY candidate with the parameter's own
+    // accepts() rule, commit only after the whole vector passed (all-or-nothing).
+    // Previously this wrote TypedParameter<T>::value directly, so an out-of-range
+    // value such as 100 could overwrite a parameter bounded to [0, 3].
+    std::size_t expected = 0;
+    for (const auto& p : items_)
+        if (dynamic_cast<TypedParameter<T>*>(p.get())) ++expected;
+    if (v.size() != expected)
+        throw std::invalid_argument("ParameterSpace: vector length mismatch");
+
+    // Pass 1: validate.
     std::size_t i = 0;
-    for (auto& p : items_) {
+    for (const auto& p : items_) {
         if (auto* tp = dynamic_cast<TypedParameter<T>*>(p.get())) {
-            if (i < v.size()) tp->value = v[i++];
+            if (!tp->accepts(v[i]))
+                throw std::invalid_argument(
+                    "ParameterSpace: value out of range for parameter '" + tp->name() + "'");
+            ++i;
         }
     }
+
+    // Pass 2: commit - every value passed validation.
+    i = 0;
+    for (auto& p : items_)
+        if (auto* tp = dynamic_cast<TypedParameter<T>*>(p.get())) tp->value = v[i++];
 }
 
 // ============================================================================
@@ -246,12 +310,6 @@ template <typename T>
 Param<T>::operator const T&() const { return value; }
 
 template <typename T>
-Param<T>::operator T&() { return value; }
-
-template <typename T>
-T& Param<T>::get() { return value; }
-
-template <typename T>
 const T& Param<T>::get() const { return value; }
 
 template <typename T>
@@ -263,9 +321,8 @@ bool Param<T>::isBound() const { return raw_ != nullptr; }
 template <typename T>
 bool Param<T>::isValid() const { return raw_ ? raw_->isValid() : false; }
 
-template <typename T>
-TypedParameter<T>* Param<T>::raw() { return raw_; }
-
+// P1: only the const overload remains - see the header note. Direct writes to
+// the TypedParameter<T> are no longer possible through a Param<T> proxy.
 template <typename T>
 const TypedParameter<T>* Param<T>::raw() const { return raw_; }
 
@@ -322,15 +379,17 @@ void PStruct<Derived>::fromJson(const json& j) {
     rebind();
     sync_from_space();
 }
-// template <typename Derived>
-// bool PStruct<Derived>::tryFromJson(const json& j) noexcept {
-//     try {
-//         fromJson(j);
-//         return true;
-//     } catch (...) {
-//         return false;
-//     }
-// }
+// P-05: definition was declared in the header but left commented out here, so
+// any instantiation produced a missing definition / link error. Restored.
+template <typename Derived>
+bool PStruct<Derived>::tryFromJson(const json& j) noexcept {
+    try {
+        fromJson(j);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 
 template <typename Derived>
 std::vector<double> PStruct<Derived>::vectorize() const {

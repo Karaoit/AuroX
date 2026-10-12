@@ -18,6 +18,13 @@
     #include "Space/ParameterSpace.hpp"
 #endif
 
+// ----------- Planner -------------
+
+// Planning lives outside the space layer (one-way dependency: Planner -> Space).
+#if __has_include (<AuroX/Planner/Planner.hpp>)
+    #include "Planner/Planner.hpp"
+#endif
+
 // ----------- Memory -------------
 
 #if __has_include (<AuroX/Memory/RunHistory.hpp>)

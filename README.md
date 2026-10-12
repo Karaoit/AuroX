@@ -46,8 +46,8 @@ auro-x/
 | 类 | 能力 |
 |---|---|
 | `ParameterSpace` | 声明参数（`declare` 连续 / `declareEnum` 枚举）；`vectorizeDouble` / `unvectorizeDouble` 把参数打包成优化器可用的连续向量；`toJson` / `fromJson` 序列化。枚举按选中索引 pack（占 1 个分量）。 |
-| `ObservationSpace` | `ContinuousObservationChannel` / `DiscreteObservationChannel` / `CategoricalObservationChannel` / `RawVectorObservationChannel`；FIFO 缓冲、零填充、`ingest` 写入、`requestVector` 拉特征向量、`serialize` / `deserialize`。 |
-| `ObservationEncoder` | 连续（minmax / zscore / none + 直方图分辨率）、离散（scalar / thermometer）、分类（one-hot + unknown 位）。纯 vectorize、无状态。 |
+| `ObservationSpace` | V0.5 单类实现：`add` / `addCategory` 注册通道（固定 `sampleDim`、`historySize`），标量 / 定长 `Vec` / 类别 one-hot 三类 `ingest`，`latest` / `collect` 读取一致快照，`freeze` / `reset` 生命周期；FIFO 左补零 + `validCount`，可选 `std::optional<double>` 时间戳。**不**含通道继承族 / 编码器 / 补偿器 / JSON。 |
+| `ObservationEncoder` | 已废弃（V0.5）：`ObservationSpace` 不再依赖编码器；归一化 / 标准化由外部数据处理代码负责。 |
 | `StateSpace` | 薄持有者：持有估计状态 x̂ + 名称 + 时间戳，`setState` / `getStateCopy` / `describe` / `reset`。 |
 | `ActionSpace` | 可堆叠的动作：`ParameterUpdateAction`（优化器驱动的参数更新，默认）+ `CustomAction`（缺处理器时的自定义回退）。`apply(space, gradient)` 执行整条动作栈。 |
 
@@ -145,7 +145,7 @@ CLBIN=".../VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe"
 | L0 系统接口 | 未实现 | 外部触发 / 命令总线的接入点。 |
 | 前端后端 | 未接线 | `apps/AuroXServer/ServerUI/` 是较完整的 Operator Console 前端原型（HTML/JS/CSS），但 C++ 后端未实现：`/api/command`、`Operator` 注册表均未接线（cpp-httplib 已 include）。 |
 | 枚举感知优化 | 后续 | 梯度优化器当前把枚举索引当数值处理；one-hot + 分类求解器为后续工作。 |
-| 观测空间增强 | 后续 | 多速率对齐、缺失掩码（当前提供 `fillCount` / `isFull` + 零填充）。 |
+| 观测空间增强 | 后续 | 多速率对齐、缺失掩码（当前提供 `validCount` + 左补零）。 |
 
 ---
 
